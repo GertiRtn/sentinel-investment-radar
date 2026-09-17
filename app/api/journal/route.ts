@@ -1,0 +1,14 @@
+import {appendResolution,resolutions} from '@/lib/sentinel/resolutions';
+import {database,iso} from '@/db/store';
+import {JournalEntry} from '@/lib/sentinel/contracts';
+import {identity,body,failure,json,ApiError} from '@/lib/sentinel/api';
+import {z} from 'zod';
+export const dynamic='force-dynamic';
+export async function GET(request:Request){try{
+ const owner=await identity(),params=new URL(request.url).searchParams,cursor=params.get('before'),at=params.get('asOf')||iso();if(!Number.isFinite(Date.parse(at)))throw new ApiError(400,'Invalid historical cutoff');const cutoff=new Date(at).toISOString();let before:string|null=null,id:string|null=null;
+ if(cursor){let value;try{value=JSON.parse(cursor)}catch{throw new ApiError(400,'Invalid cursor')}const parsed=z.tuple([z.string().datetime(),z.string().uuid()]).safeParse(value);if(!parsed.success)throw new ApiError(400,'Invalid cursor');[before,id]=parsed.data;}
+ const rows=await database().prepare("SELECT s.* FROM signal_log s WHERE s.owner=? AND s.created_at<=? AND s.kind IN ('thesis','prediction','decision','legacy_import') AND (? IS NULL OR s.created_at < ? OR (s.created_at = ? AND s.id < ?)) ORDER BY s.created_at DESC,s.id DESC LIMIT 51").bind(owner,cutoff,before,before,before,id).all();
+ const entries=await Promise.all(rows.results.slice(0,50).map(async(r:any)=>{const history=r.kind==='prediction'?await resolutions(r.id,owner,cutoff):[];const latest=history[0] as any;return {...r,body:JSON.parse(r.body),outcome:latest?.outcome??null,resolved_at:latest?.resolved_at,evidence:latest?.evidence,resolution_id:latest?.id,resolutionHistory:history}}));const last=rows.results[49] as any;return json({entries,nextCursor:rows.results.length>50?JSON.stringify([last.created_at,last.id]):null});
+ }catch(e){return failure(e)}}
+export async function POST(request:Request){try{const owner=await identity(request),raw=await body(request);if(raw.kind==='resolution')return json(await appendResolution(owner,raw));const input=JournalEntry.safeParse(raw);if(!input.success)throw new ApiError(400,input.error.issues[0].message);const d=input.data,db=database();const existing=await db.prepare('SELECT id,owner FROM signal_log WHERE id=?').bind(d.requestId).first<{id:string;owner:string}>();if(existing){if(existing.owner!==owner)throw new ApiError(409,'Entry identifier unavailable');return json({id:existing.id})}
+ const at=iso();await db.prepare('INSERT INTO signal_log(id,owner,created_at,kind,entity,body,probability,resolves_at) VALUES(?,?,?,?,?,?,?,?)').bind(d.requestId,owner,at,d.kind,d.entity,JSON.stringify({statement:d.statement,counterEvidence:d.counterEvidence,references:d.references,disposition:d.disposition,resolutionRule:d.resolutionRule,probabilitySource:d.kind==='prediction'?'user estimate':'not applicable'}),d.probability,d.resolvesAt).run();return json({id:d.requestId,createdAt:at});}catch(e){return failure(e)}}

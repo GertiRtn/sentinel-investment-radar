@@ -1,0 +1,14 @@
+import {database,iso} from '@/db/store';
+import {ApiError} from './api';
+import {z} from 'zod';
+export const Resolution=z.object({kind:z.literal('resolution'),requestId:z.string().uuid(),resolves_id:z.string().uuid(),outcome:z.union([z.literal(0),z.literal(1)]),evidence:z.string().trim().min(20).max(12000),resolution_source_url:z.string().url().refine(v=>new URL(v).protocol==='https:'),supersedes_id:z.string().uuid().nullable().default(null)}).strict();
+export async function resolutions(id:string,owner:string,at=iso()){
+ const rows=(await database().prepare(`SELECT id,signal_id,resolved_at,outcome,evidence,source_url,supersedes_id FROM resolution_record WHERE signal_id=? AND owner=? AND resolved_at<=? UNION ALL SELECT id,signal_id,resolved_at,outcome,evidence,NULL source_url,NULL supersedes_id FROM signal_resolution WHERE signal_id=? AND owner=? AND resolved_at<=? ORDER BY resolved_at DESC,id DESC`).bind(id,owner,at,id,owner,at).all()).results;const superseded=new Set(rows.map(r=>r.supersedes_id));return rows.sort((a,b)=>Number(superseded.has(a.id))-Number(superseded.has(b.id))||String(b.resolved_at).localeCompare(String(a.resolved_at)));
+}
+export async function appendResolution(owner:string,input:unknown){
+ const p=Resolution.safeParse(input);if(!p.success)throw new ApiError(400,'Provide the prediction, outcome, evidence and an HTTPS source URL.');const d=p.data,db=database();
+ const existing=await db.prepare('SELECT * FROM resolution_record WHERE id=? AND owner=?').bind(d.requestId,owner).first<any>();if(existing){if(existing.signal_id!==d.resolves_id||existing.outcome!==d.outcome||existing.evidence!==d.evidence||existing.source_url!==d.resolution_source_url||existing.supersedes_id!==d.supersedes_id)throw new ApiError(409,'Request identifier already used with different content');return {id:existing.id};}
+ const prediction=await db.prepare("SELECT * FROM signal_log WHERE id=? AND owner=? AND kind='prediction'").bind(d.resolves_id,owner).first<any>();if(!prediction)throw new ApiError(404,'Prediction not found');if(Date.parse(prediction.resolves_at)>Date.now())throw new ApiError(400,'The resolution date has not arrived');
+ const history=await resolutions(d.resolves_id,owner);const latest=history[0];if((latest?.id||null)!==d.supersedes_id)throw new ApiError(409,'A correction must reference the latest resolution. Reload the record.');
+ try{await db.prepare('INSERT INTO resolution_record(id,signal_id,owner,resolved_at,outcome,evidence,source_url,supersedes_id,chain_key) VALUES(?,?,?,?,?,?,?,?,?)').bind(d.requestId,d.resolves_id,owner,iso(),d.outcome,d.evidence,d.resolution_source_url,d.supersedes_id,d.supersedes_id||'root:'+d.resolves_id).run();}catch{throw new ApiError(409,'A resolution was recorded concurrently. Reload its history.');}return {id:d.requestId};
+}
