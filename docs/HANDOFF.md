@@ -59,3 +59,20 @@ Template at the bottom.
 **Could NOT verify, and why:**
 **Next action:**
 ```
+
+
+---
+
+## 2026-09-17 — Codex — production ingest blocked at sign-in
+
+**Worked on:** Read the current GitHub AGENTS.md and this handoff in full, then summarized the verified baseline before any code change. Attempted to reach the deployed watchlist for the required real SEC ingest.
+
+**Verified by running:** Sites get_site confirmed the owner-accessible live deployment (version 5). Live D1 overview returned binding DB. Reading sec_run and financial_fact with limit 1 returned rows: [], has_more: false for each: both tables were empty at inspection. Clicking the deployed site's Continue with ChatGPT link reached auth.openai.com, which displayed "Performing security verification" and a Cloudflare "Verify you are human" checkbox (Ray ID a3c9a2a2aa50abf8). No watchlist submission was made. Recent Worker error logs (30-minute window, limit 10) returned no events; this is not evidence that an ingest succeeds or avoids resource limits.
+
+**Changed:** Appended this handoff entry only. No application code, database schema, triggers, dependencies, runtime configuration or deployment changes. No test rerun; the 23-test/36-trigger baseline remains the independent review's finding.
+
+**Open / broken:** Task 1 remains blocked by interactive sign-in verification. Neither the mid-sized filer nor Apple was ingested. All five Task 2 issues remain unstarted, including the quarterly-period decision.
+
+**Could NOT verify, and why:** End-to-end ingest completion, wall-clock time, companyfacts payload bytes, per-filer financial_fact row counts, and Worker CPU/subrequest/memory limits are unmeasured because authentication prevented the watchlist action. The zero-row database observation is a pre-ingest baseline, not a successful zero-result ingest. Browser guidance requires explicit user permission before attempting the CAPTCHA.
+
+**Next action:** Obtain permission to attempt the visible human-verification challenge or use the supported manual browser handoff, complete normal sign-in, and run the mid-sized filer then Apple through the deployed watchlist. Report actual measurements before starting Task 2. Preserve the existing invariants and annual-period semantics.
