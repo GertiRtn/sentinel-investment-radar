@@ -76,3 +76,11 @@ Template at the bottom.
 **Could NOT verify, and why:** End-to-end ingest completion, wall-clock time, companyfacts payload bytes, per-filer financial_fact row counts, and Worker CPU/subrequest/memory limits are unmeasured because authentication prevented the watchlist action. The zero-row database observation is a pre-ingest baseline, not a successful zero-result ingest. Browser guidance requires explicit user permission before attempting the CAPTCHA.
 
 **Next action:** Obtain permission to attempt the visible human-verification challenge or use the supported manual browser handoff, complete normal sign-in, and run the mid-sized filer then Apple through the deployed watchlist. Report actual measurements before starting Task 2. Preserve the existing invariants and annual-period semantics.
+
+## 2026-11-09 — Codex — simplify Sentinel's starting screen
+
+Added a Start here tab as the default view, with direct links to the existing market desk, watchlist, research examples and journal. Added a plainly labeled upcoming simulated pilot card. Existing research tabs and data flows remain available.
+
+Verified: production build completed and all 23 existing tests passed. Browser preview could not be verified because the managed preview service remained in a starting state. No production data or execution functionality was changed.
+
+Next: review the new home screen with Gerti, then build the simulated pilot screen when its data flow is ready.
