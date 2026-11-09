@@ -1,7 +1,7 @@
 // Sentinel Strategy Tester research prototype. Never submits to a live terminal.
 // NOT VALIDATED: compile and run only in MT5 Strategy Tester.
 #property strict
-#property version "1.00"
+#property version "1.01"
 #property description "Strategy Tester only; daily momentum research prototype."
 
 input int LookbackDays = 28;
@@ -123,10 +123,27 @@ void OnTick()
    double minvol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double maxvol = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    double ticksize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-   if(point <= 0 || step <= 0 || ticksize <= 0 || Lots < minvol || Lots > maxvol ||
-      MathAbs(Lots / step - MathRound(Lots / step)) > 0.0000001 ||
-      (tick.ask - tick.bid) / point > MaxSpreadPoints)
-   { Status("SKIPPED: volume, symbol settings or spread outside test limits."); return; }
+   if(point <= 0 || step <= 0 || ticksize <= 0)
+   {
+      Status(StringFormat("SKIPPED: invalid symbol settings. point=%.8f volume_step=%.8f tick_size=%.8f",
+                          point, step, ticksize));
+      return;
+   }
+   if(Lots < minvol || Lots > maxvol ||
+      MathAbs(Lots / step - MathRound(Lots / step)) > 0.0000001)
+   {
+      Status(StringFormat("SKIPPED: invalid volume. requested=%.4f minimum=%.4f maximum=%.4f step=%.4f",
+                          Lots, minvol, maxvol, step));
+      return;
+   }
+   double spread_points = (tick.ask - tick.bid) / point;
+   if(spread_points > MaxSpreadPoints)
+   {
+      Status(StringFormat("SKIPPED: spread %.1f points exceeds limit %d; bid=",
+                          spread_points, MaxSpreadPoints) + DoubleToString(tick.bid, _Digits) +
+             " ask=" + DoubleToString(tick.ask, _Digits));
+      return;
+   }
    ulong ticket;
    double volume;
    int position = OwnedPosition(ticket, volume);
