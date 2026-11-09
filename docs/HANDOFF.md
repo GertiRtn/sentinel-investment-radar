@@ -76,3 +76,9 @@ Template at the bottom.
 **Could NOT verify, and why:** End-to-end ingest completion, wall-clock time, companyfacts payload bytes, per-filer financial_fact row counts, and Worker CPU/subrequest/memory limits are unmeasured because authentication prevented the watchlist action. The zero-row database observation is a pre-ingest baseline, not a successful zero-result ingest. Browser guidance requires explicit user permission before attempting the CAPTCHA.
 
 **Next action:** Obtain permission to attempt the visible human-verification challenge or use the supported manual browser handoff, complete normal sign-in, and run the mid-sized filer then Apple through the deployed watchlist. Report actual measurements before starting Task 2. Preserve the existing invariants and annual-period semantics.
+
+## 2026-11-09 — Codex — draft MT5 demo research monitor
+
+Added research/metatrader-demo/SentinelDemoSignal.mq5 and README. The source is intended to inspect daily momentum on a connected demo account only. It has no order-placement code and reports unknown for missing/stale quotes or missing history. The MT5 compiler and broker terminal are not available in this environment, so compilation, account-mode behavior and data handling are unverified. MT4 vs MT5 and broker remain unconfirmed.
+
+Next: confirm platform version and demo broker, compile and inspect the monitor on the user's demo terminal, then build and test a separate demo-only order execution component.
