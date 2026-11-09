@@ -36,3 +36,9 @@ Please give feedback in the PR conversation:
 2. Should the BTC and ETH rules both remain in the final comparison, given ETH's weaker validation result?
 
 The original protocol selected a candidate independently for each asset and a positive-return validation gate. Excluding ETH now would be a new, post-result decision and should be documented as such.
+
+## One-hour execution sensitivity
+
+On the same validation dates and rules, a separate exploratory run uses the open of the 01:00 UTC hourly candle, one hour after the daily boundary. The original signal is unchanged. BTC returned 234.09% with the one-hour timing versus 242.83% at the daily boundary. ETH returned 27.10% versus 28.35%. Buy-and-hold with the same one-hour start returned 279.19% and 187.50%, respectively. The same fee, spread and slippage assumptions apply.
+
+The 36 monthly hourly archives are checked against their published checksums and the run requires exactly one 01:00 candle for every validation day. Hourly opens are still price proxies, not proof of fill, and do not model spread at the time, order-book depth or exchange filters. This is a sensitivity test on already-seen validation data, not independent evidence. Exact source hashes and results are in timing-review.json. Run from the repository root with `python3 research/study3-momentum/timing_review.py`.

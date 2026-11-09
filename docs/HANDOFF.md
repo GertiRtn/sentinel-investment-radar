@@ -98,3 +98,7 @@ The executable validation script and manifest/metrics are recorded in research/s
 ## 2026-11-09 — Codex — independent validation arithmetic review
 
 Re-ran four fixture tests and cross-checked the two validation equities with separately written Decimal position accounting over the recorded bars. BTC differed by 3e-25 USDT, ETH matched to displayed precision. Ran a 2x assumed-cost scenario. Added research/study3-momentum/REVIEW.md with measured results, timing limitations and decisions for review. This was a validation-period analysis, not holdout evaluation. No strategy thresholds were changed. Next: improve reproducibility and assess timing using finer-resolution data before deciding on holdout.
+
+## 2026-11-09 — Codex — one-hour validation timing sensitivity
+
+Re-ran the existing selected BTC 28-day and ETH 14-day validation rules with fills proxied by the 01:00 UTC hourly open on each signal day. The 36 hourly archives passed published SHA-256 sidecar checks and expected-day coverage checks. Modeled net returns were 234.09% and 27.10%, respectively. The original daily-boundary runs returned 242.83% and 28.35%. Hourly opening prices are execution proxies, not real fills. Four baseline fixture tests passed, and rerunning the sensitivity script gave identical displayed results. Final holdout remains sealed. Next: strengthen timing fixture tests and freeze the holdout protocol before evaluation.
