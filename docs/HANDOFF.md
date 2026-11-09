@@ -94,3 +94,7 @@ Template at the bottom.
 Ran frozen 2023-01-01 through 2024-06-30 validation, starting flat with December 2022 warm-up, separately for BTC 28-day and ETH 14-day momentum. Both had positive modeled net returns and pass the stated validation gate. BTC returned 242.83% versus 278.91% buy-and-hold, with 15.24% maximum daily-close drawdown. ETH returned 28.35% versus 187.01% buy-and-hold, with 36.45% drawdown. One-extra-bar sensitivity returned 187.09% and 57.58% respectively. Two runs produced identical stdout. These estimates use the original assumed fees and execution model, without exchange filters. Results do not establish an edge.
 
 The executable validation script and manifest/metrics are recorded in research/study3-momentum. The final holdout has not been opened. No application or execution code changed.
+
+## 2026-11-09 — Codex — independent validation arithmetic review
+
+Re-ran four fixture tests and cross-checked the two validation equities with separately written Decimal position accounting over the recorded bars. BTC differed by 3e-25 USDT, ETH matched to displayed precision. Ran a 2x assumed-cost scenario. Added research/study3-momentum/REVIEW.md with measured results, timing limitations and decisions for review. This was a validation-period analysis, not holdout evaluation. No strategy thresholds were changed. Next: improve reproducibility and assess timing using finer-resolution data before deciding on holdout.
