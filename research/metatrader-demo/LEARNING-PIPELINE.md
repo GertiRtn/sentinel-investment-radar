@@ -14,9 +14,29 @@ preserving the original evidence and uncertainty.
 - Report: net -$22.45, 9 trades, 2 winners, 7 losers, maximum equity drawdown
   $52.17 (0.52%). End of journal: final balance $9,977.55; at least four
   checks skipped for an unknown member of volume/settings/spread conditions.
+- A later v1.01 rerun displayed the same aggregate results; its journal showed
+  spreads of 47, 221, 69 and 112 points exceeded the 30-point limit for four
+  checks near the end. This is a partial journal, not a complete skip count.
 - Screenshot evidence only: the entire log, actual inputs, detailed trade
   ledger, data provenance and fees have not been independently verified.
   History quality 100% is the tester's report, not proof of correct inputs.
+
+## Retry candidate v1.02
+
+For a high-spread check, retry at the first incoming tick at least five minutes
+later, up to one hour after the first tick observed for that daily bar. A new
+daily bar resets the window. All other skips remain final for that day. Once a
+decision or order attempt occurs, it remains final for that day; an uncertain
+or failed order halts the run. The 30-point limit is unchanged. A retry may
+never occur if no tick arrives; a spread gate can delay both entries and exits.
+
+The parameters are initial test choices rather than proven optimal settings.
+Run the candidate on the identical tester settings and compare trades, costs,
+drawdown, journal and missed/expired checks against v1.01. Since the candidate
+was motivated by the first test, that period is development data, not an
+independent test. Verify the logic on later untouched periods and other market
+conditions before drawing conclusions. Prototype remains tester-only; neither
+MT5 compilation nor execution of v1.02 is yet verified.
 
 ## Proposed pipeline
 
