@@ -1,7 +1,7 @@
 // Sentinel Strategy Tester research prototype. Never submits to a live terminal.
 // NOT VALIDATED: compile and run only in MT5 Strategy Tester.
 #property strict
-#property version "1.01"
+#property version "1.02"
 #property description "Strategy Tester only; daily momentum research prototype."
 
 input int LookbackDays = 28;
@@ -12,6 +12,9 @@ input int DeviationPoints = 20;
 
 const ulong Magic = 72026001;
 datetime evaluated_day = 0;
+datetime retry_day = 0;
+datetime retry_deadline = 0;
+datetime next_retry = 0;
 bool halted = false;
 
 void Status(string message)
@@ -107,6 +110,25 @@ void OnTick()
    if(!TesterOnly()) { halted = true; Status("HALTED: tester/demo check failed."); return; }
    datetime current_day = iTime(_Symbol, PERIOD_D1, 0);
    if(current_day <= 0 || current_day == evaluated_day) return;
+   datetime now = TimeCurrent();
+   if(now <= 0) return;
+   if(retry_day != current_day)
+   {
+      retry_day = current_day;
+      retry_deadline = now + 3600;
+      next_retry = now;
+      PrintFormat("Sentinel retry window: day=%s start=%s deadline=%s interval_seconds=300",
+                  TimeToString(current_day, TIME_DATE | TIME_MINUTES),
+                  TimeToString(now, TIME_DATE | TIME_SECONDS),
+                  TimeToString(retry_deadline, TIME_DATE | TIME_SECONDS));
+   }
+   if(now > retry_deadline)
+   {
+      evaluated_day = current_day;
+      Status("SKIPPED: spread retry window expired; no further checks today.");
+      return;
+   }
+   if(now < next_retry) return;
    // At most one decision for a bar, including when an order is rejected.
    evaluated_day = current_day;
    MqlRates bars[];
@@ -139,9 +161,13 @@ void OnTick()
    double spread_points = (tick.ask - tick.bid) / point;
    if(spread_points > MaxSpreadPoints)
    {
-      Status(StringFormat("SKIPPED: spread %.1f points exceeds limit %d; bid=",
+      Status(StringFormat("WAITING: spread %.1f points exceeds limit %d; bid=",
                           spread_points, MaxSpreadPoints) + DoubleToString(tick.bid, _Digits) +
              " ask=" + DoubleToString(tick.ask, _Digits));
+      // Retry only a high spread; every order attempt remains once per day.
+      // OnTick runs on quotes, so checks happen at or after this time.
+      evaluated_day = 0;
+      next_retry = now + 300;
       return;
    }
    ulong ticket;
