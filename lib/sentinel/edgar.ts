@@ -1,7 +1,7 @@
 import {env} from 'cloudflare:workers';
 import {database,hash,iso} from '@/db/store';
 import {ApiError} from './api';
-import {parseFacts,derive,type FinancialFact} from './financial';
+import {parseFacts,derive,quarterlyFigures,type FinancialFact} from './financial';
 const bindings=()=>env as unknown as {DB:D1Database;ARCHIVE:R2Bucket;SEC_CONTACT_EMAIL?:string};
 const wait=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 /** Shared, atomic token bucket, capacity 1 / refill 2 per second: deliberately below SEC's 10/s ceiling. */
@@ -52,5 +52,5 @@ export async function companyFile(entityId:string,asOf:string,mode='public',owne
  const figures=derive(records,asOf,mode==='recorded'?asOf:undefined);const filings=(await db.prepare("SELECT * FROM filing WHERE entity_id=? AND known_from<=? AND (?='public' OR recorded_at<=?) ORDER BY known_from DESC,accession DESC").bind(entityId,asOf,mode,asOf).all()).results;
  const estimates=(await db.prepare('SELECT * FROM maintenance_estimate WHERE entity_id=? AND owner=? AND known_from<=? ORDER BY known_from DESC').bind(entityId,owner,asOf).all()).results;
  for(const f of figures.filter(f=>f.metric==='maintenance_capex')){const e=estimates.find(e=>e.period_end===f.period_end);if(e){f.value=Number(e.value);f.confidence='estimated';f.method=String(e.method);f.known_from=String(e.known_from);f.reason='Human estimate; separate owner-earnings reconciliation still required';}}
- return {entity,figures,filings,estimates,asOf,mode,lastGoodAt:lastGood?.known_from||null,stale:!lastGood||Date.now()-Date.parse(String(lastGood.known_from))>86400000||runs[0]?.status==='failed',runs,notice:mode==='recorded'?'Only data captured by Sentinel by the cutoff.':'Reconstructed public filing history, captured later. Filed dates have day precision: values become eligible at the end of that UTC date. Not a record of what Sentinel held then.',coverage:records.length?'us-gaap-supported-tags':'No supported USD US-GAAP facts; IFRS and custom tags are unavailable.'};
+ return {entity,figures,quarterlyFigures:quarterlyFigures(records,asOf,mode==='recorded'?asOf:undefined),filings,estimates,asOf,mode,lastGoodAt:lastGood?.known_from||null,stale:!lastGood||Date.now()-Date.parse(String(lastGood.known_from))>86400000||runs[0]?.status==='failed',runs,notice:mode==='recorded'?'Only data captured by Sentinel by the cutoff.':'Reconstructed public filing history, captured later. Filed dates have day precision: values become eligible at the end of that UTC date. Not a record of what Sentinel held then.',coverage:records.length?'us-gaap-supported-tags':'No supported USD US-GAAP facts; IFRS and custom tags are unavailable.'};
 }
