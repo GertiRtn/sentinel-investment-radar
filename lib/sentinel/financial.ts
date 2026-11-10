@@ -13,6 +13,18 @@ export function parseFacts(data:any,entity:string,raw:string,recorded:string):Fi
  }}return out;
 }
 export function annual(f:FinancialFact){const days=(Date.parse(f.period_end)-Date.parse(f.period_start))/86400000;return !f.period_start||days>=330&&days<=380;}
+/** Directly reported three-month flows only. Never infer a quarter from YTD figures. */
+export function quarterlyFigures(rows:FinancialFact[],asOf:string,recordedAsOf?:string):Figure[]{
+ const choices=new Map<string,FinancialFact>();
+ for(const f of rows){
+  const days=(Date.parse(f.period_end)-Date.parse(f.period_start))/86400000;
+  if(!f.period_start||days<75||days>105||f.known_from>asOf||recordedAsOf&&f.recorded_at>recordedAsOf)continue;
+  const key=f.metric+':'+f.period_end,old=choices.get(key);
+  const rank=(x:FinancialFact)=>{const i=TAGS[x.metric]?.indexOf(x.source_tag)??-1;return i<0?999:i;};
+  if(!old||f.known_from>old.known_from||f.known_from===old.known_from&&(rank(f)<rank(old)||rank(f)===rank(old)&&f.accession>old.accession))choices.set(key,f);
+ }
+ return [...choices.values()].map(f=>({metric:f.metric,value:f.value,unit:f.unit,period_end:f.period_end,known_from:f.known_from,inputs:[f],method:'reported:'+f.source_tag,confidence:'reported',reason:'Directly reported approximately three-month period'}));
+}
 export function selectFacts(rows:FinancialFact[],asOf:string,recordedAsOf?:string){
  const choices=new Map<string,FinancialFact>();
  for(const f of rows){if(f.known_from>asOf||recordedAsOf&&f.recorded_at>recordedAsOf||!annual(f))continue;const key=f.metric+':'+f.period_end;const old=choices.get(key);const priority=TAGS[f.metric]?.indexOf(f.source_tag)??99;const oldPriority=old?TAGS[old.metric]?.indexOf(old.source_tag)??99:99;
