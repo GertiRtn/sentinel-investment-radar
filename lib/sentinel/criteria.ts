@@ -25,22 +25,38 @@ export function evaluate(predicate:PredicateType,figures:Figure[],filings:any[],
  const result=checks.some(c=>c.result==='unknown')?'unknown':'all' in predicate?(checks.every(c=>c.result==='trip')?'trip':'pass'):(checks.some(c=>c.result==='trip')?'trip':'pass');
  return {result,reason:checks.map(c=>c.reason).join('\n'),checks,inputs:[...new Set(checks.flatMap(c=>c.inputs))],triggeringFiling:checks.map(c=>c.filing).filter(Boolean).sort((a,b)=>b.known_from.localeCompare(a.known_from))[0]||null};
 }
+/** Compares an earlier evaluation of the same moment with a fresh one. Pure; exported for tests. */
+export function compareReplay(earlier:any,fresh:any,earlierId:string){
+ const view=(r:any)=>({result:r?.result,checks:(r?.checks||[]).map((c:any)=>({result:c.result,reason:c.reason,streak:c.streak,inputs:[...(c.inputs||[])].sort(),filing:c.filing?.accession??null}))});
+ const a=view(earlier),b=view(fresh),differences:string[]=[];
+ if(a.result!==b.result)differences.push(`Overall result changed from ${a.result} to ${b.result}.`);
+ const n=Math.max(a.checks.length,b.checks.length);
+ for(let i=0;i<n;i++){const x=a.checks[i],y=b.checks[i];if(JSON.stringify(x)!==JSON.stringify(y))differences.push(`Condition ${i+1}: ${x?.reason??'absent'} → ${y?.reason??'absent'}`);}
+ return {evaluationId:earlierId,matches:differences.length===0,earlierResult:a.result,differences};
+}
 export async function evaluateCriterion(criterion:any,memo:any,asOf:string){
  const db=database(),now=iso();const prior=await db.prepare('SELECT * FROM criterion_evaluation WHERE kill_criterion_id=? ORDER BY evaluated_at DESC,id DESC LIMIT 1').bind(criterion.id).first<any>();
  const replay=await db.prepare('SELECT * FROM criterion_evaluation WHERE kill_criterion_id=? AND as_of=? ORDER BY evaluated_at,id LIMIT 1').bind(criterion.id,asOf).first<any>();
- const company=await companyFile(memo.entity_id,asOf,'public',memo.owner);const result=replay?JSON.parse(replay.snapshot_json):evaluate(JSON.parse(criterion.predicate_json),company.figures,company.filings,asOf);
+ const company=await companyFile(memo.entity_id,asOf,'public',memo.owner);
+ // Always recompute. An earlier evaluation of the same moment is compared, never served: a snapshot taken
+ // before a backfill completed rests on incomplete data, and serving it would hide the divergence.
+ const fresh=evaluate(JSON.parse(criterion.predicate_json),company.figures,company.filings,asOf);
+ const replayOf=replay?compareReplay(JSON.parse(replay.snapshot_json),fresh,replay.id):null;
+ const result=replayOf?{...fresh,replayOf}:fresh;
  const id=crypto.randomUUID();await db.prepare('INSERT INTO criterion_evaluation(id,kill_criterion_id,evaluated_at,as_of,result,reason,inputs_json,triggering_filing_id,supersedes_id,snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(id,criterion.id,now,asOf,result.result,result.reason,JSON.stringify(result.inputs),result.triggeringFiling?.id||null,prior?.result==='trip'&&result.result==='pass'&&asOf>=prior.as_of?prior.id:null,JSON.stringify(result)).run();
+ if(replayOf&&!replayOf.matches){const alert={title:'OPERATIONAL ALERT — REPLAY DIFFERS FROM AN EARLIER EVALUATION',company:company.entity.name,criterionCreatedAt:criterion.known_from,condition:JSON.parse(criterion.predicate_json),asOf,earlierEvaluationId:replay.id,earlierResult:replayOf.earlierResult,currentResult:fresh.result,differences:replayOf.differences,note:'The same moment now evaluates differently, usually because data with a filing date on or before this moment was captured later (for example after a backfill). Both evaluations are kept. This is a research record, not a trade instruction.'};await db.prepare('INSERT INTO criterion_alert(id,owner,evaluation_id,known_from,tier,body) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),memo.owner,id,now,'Operational',JSON.stringify(alert)).run();}
  if(result.result==='trip'||result.result==='unknown'&&prior?.result==='unknown'){
  const title=result.result==='trip'?'KILL CRITERION TRIPPED':'OPERATIONAL ALERT — CONDITION UNKNOWN TWICE';
- const evidence=result.checks.map((c:Check)=>({condition:c.predicate,current:c.values[0]?.value??null,periodEnd:c.values[0]?.period_end||null,streak:c.streak,source:c.filing,inputs:c.values.flatMap(f=>f.inputs)}));
- const alert={title,company:company.entity.name,criterionCreatedAt:criterion.known_from,condition:JSON.parse(criterion.predicate_json),reason:result.reason,thesis:memo.thesis,evidence,asOf,note:'This is a research record, not a trade instruction. Acting on it requires a decision session and the cooling-off interval. These gates are not yet enforced by Sentinel.'};
+ const evidence=result.checks.map((c:Check)=>({condition:c.predicate,current:c.values[0]?.value??null,confidence:c.values[0]?.confidence??null,method:c.values[0]?.method??null,estimated:c.values.some(f=>f.confidence==='estimated'),periodEnd:c.values[0]?.period_end||null,streak:c.streak,source:c.filing,inputs:c.values.flatMap(f=>f.inputs)}));
+ const estimatedNote=evidence.some(e=>e.estimated)?' Some values in this check are estimates (for example EBITDA approximated as operating income plus depreciation), not directly reported figures.':'';
+ const alert={title,company:company.entity.name,criterionCreatedAt:criterion.known_from,condition:JSON.parse(criterion.predicate_json),reason:result.reason,thesis:memo.thesis,evidence,asOf,note:'This is a research record, not a trade instruction. Acting on it requires a decision session and the cooling-off interval. These gates are not yet enforced by Sentinel.'+estimatedNote};
  await db.prepare('INSERT INTO criterion_alert(id,owner,evaluation_id,known_from,tier,body) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),memo.owner,id,now,result.result==='trip'?'Immediate':'Operational',JSON.stringify(alert)).run();}
  return {id,...result,evaluatedAt:now,asOf};
 }
 export async function evaluateEntity(entityId:string){
  const db=database();const criteria=(await db.prepare('SELECT c.*,m.owner,m.entity_id,m.thesis FROM kill_criterion c JOIN research_memo m ON m.id=c.memo_id WHERE m.entity_id=? AND NOT EXISTS(SELECT 1 FROM kill_criterion n WHERE n.supersedes_id=c.id)').bind(entityId).all()).results;
  // Evaluate each newly known filing in chronological order, not just the final backfill state.
- for(const c of criteria){const previous=await db.prepare('SELECT MAX(as_of) cutoff FROM criterion_evaluation WHERE kill_criterion_id=?').bind(c.id).first<any>();const filings=(await db.prepare('SELECT DISTINCT known_from FROM filing WHERE entity_id=? AND known_from>? AND known_from<=? ORDER BY known_from').bind(entityId,previous?.cutoff||String(c.known_from),iso()).all()).results;for(const f of filings)await evaluateCriterion(c,c,String(f.known_from));if(!filings.length)await evaluateCriterion(c,c,iso());}
+ for(const c of criteria){const previous=await db.prepare('SELECT MAX(as_of) cutoff FROM criterion_evaluation WHERE kill_criterion_id=?').bind(c.id).first<any>();const filings=(await db.prepare('SELECT DISTINCT known_from FROM filing WHERE entity_id=? AND known_from>? AND known_from<=? ORDER BY known_from').bind(entityId,previous?.cutoff||String(c.known_from),iso()).all()).results;const memo={id:c.memo_id,owner:c.owner,entity_id:c.entity_id,thesis:c.thesis};for(const f of filings)await evaluateCriterion(c,memo,String(f.known_from));if(!filings.length)await evaluateCriterion(c,memo,iso());}
 }
 export async function appendCriterion(owner:string,input:any){
  const d=z.object({requestId:z.string().uuid(),memo_id:z.string().uuid(),predicate:Predicate,supersedes_id:z.string().uuid().nullable().default(null),supersede_reason:z.string().trim().max(6000).default('')}).strict().safeParse(input);if(!d.success)throw new ApiError(400,'Use one all/any group with supported comparison or event predicates.');const p=d.data,db=database();

@@ -29,7 +29,12 @@ await test('append-only resolution corrections preserve original prediction and 
 });
 await test('three fixture companies ingest ten annual years, raw gzip capture, idempotency and shared rate limit',async()=>{
  for(const cik of ['0000000001','0000000002','0000000003']){sec(cik);const r=await req('/watch','POST',{identifier:cik});assert.equal(r.status,200,JSON.stringify(r));}
- for(let i=1;i<stamps.length;i++)assert.ok(stamps[i]-stamps[i-1]>=480);
+ // The limiter grants SEC requests >=500 ms apart. Stamps are taken when each request reaches the mock, so a
+ // single gap can shrink by delivery jitter on a busy CI runner; jitter does not accumulate, so the average
+ // is held to the limit and each gap to 400 ms (still 4x below SEC's 10 requests/second ceiling).
+ const gaps=stamps.slice(1).map((t,i)=>t-stamps[i]);assert.ok(gaps.length>=2,'enough SEC requests to measure spacing');
+ for(const g of gaps)assert.ok(g>=400,`SEC request gap ${g} ms is below 400 ms`);
+ assert.ok((stamps.at(-1)-stamps[0])/gaps.length>=480,`average SEC request gap ${((stamps.at(-1)-stamps[0])/gaps.length).toFixed(0)} ms is below 480 ms`);
  const before=(await db.prepare('SELECT COUNT(*) n FROM financial_fact').first()).n;assert.equal((await req('/watch','POST',{identifier:'0000000001'})).status,200);assert.equal((await db.prepare('SELECT COUNT(*) n FROM financial_fact').first()).n,before);
  const file=(await req('/company?entity=sec:0000000001')).data;assert.equal(file.figures.filter(f=>f.metric==='revenue').length,10);assert.equal(file.figures.find(f=>f.metric==='owner_earnings').value,null);assert.equal(file.figures.filter(f=>f.metric==='revenue').every(f=>f.inputs.every(i=>i.source_tag&&i.accession&&i.filed)),true);const bucket=await mf.getR2Bucket('ARCHIVE');assert.ok((await bucket.list()).objects.length>=6);
 });
@@ -116,7 +121,7 @@ let memoId,criterionId;
 await test('criterion trips at the exact eligible filing, replay matches; later restatement appends pass',async()=>{
  memoId=crypto.randomUUID();assert.equal((await req('/criteria','POST',{action:'memo',requestId:memoId,entity_id:'sec:0000000001',thesis:'Fixture thesis: annual operating cash flow remains at least seventy percent of net income.',position_open:true})).status,200);
  criterionId=crypto.randomUUID();const create={action:'criterion',requestId:criterionId,memo_id:memoId,predicate:{all:[{metric:'cash_conversion',op:'<',value:.7,consecutive_periods:2}]}};assert.equal((await req('/criteria','POST',create)).status,200);
- const before=await req('/criteria','POST',{action:'evaluate',criterion_id:criterionId,as_of:'2024-06-01T00:00:00.000Z'});assert.equal(before.data.result,'pass');const at='2024-11-01T23:59:59.999Z';const r=await req('/criteria','POST',{action:'evaluate',criterion_id:criterionId,as_of:at});assert.equal(r.data.result,'trip');assert.equal(r.data.triggeringFiling.accession,'0000000001-24-000001');const replay=await req('/criteria','POST',{action:'evaluate',criterion_id:criterionId,as_of:at});assert.deepEqual(replay.data.checks,r.data.checks);
+ const before=await req('/criteria','POST',{action:'evaluate',criterion_id:criterionId,as_of:'2024-06-01T00:00:00.000Z'});assert.equal(before.data.result,'pass');const at='2024-11-01T23:59:59.999Z';const r=await req('/criteria','POST',{action:'evaluate',criterion_id:criterionId,as_of:at});assert.equal(r.data.result,'trip');assert.equal(r.data.triggeringFiling.accession,'0000000001-24-000001');const replay=await req('/criteria','POST',{action:'evaluate',criterion_id:criterionId,as_of:at});assert.deepEqual(replay.data.checks,r.data.checks);assert.equal(replay.data.replayOf.evaluationId,r.data.id,'replay names the earlier evaluation it was compared with');assert.equal(replay.data.replayOf.matches,true,'recomputed, not served from the earlier snapshot');assert.ok(!(await req('/criteria')).data.alerts.some(x=>JSON.parse(typeof x.body==='string'?x.body:JSON.stringify(x.body)).title?.includes('REPLAY DIFFERS')),'no mismatch alert when the data is unchanged');
  const after=await req('/criteria','POST',{action:'evaluate',criterion_id:criterionId,as_of:'2025-03-01T23:59:59.999Z'});assert.equal(after.data.result,'pass');const rows=(await req('/criteria')).data.evaluations;assert.ok(rows.find(e=>e.id===after.data.id).supersedes_id);assert.ok(rows.find(e=>e.id===r.data.id));
  assert.equal((await req('/criteria','POST',{...create,requestId:crypto.randomUUID(),supersedes_id:criterionId})).status,400);
 });

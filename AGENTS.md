@@ -58,7 +58,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 3. The outcome horizon is 5 trading days only; it needs longer horizons (e.g. 20/60/120) as separate records.
 4. Outcome capacity is one per run (max 24/day) against up to 144 cases/day: the backlog grows without bound.
 5. Capacity: ~250 headlines collected vs ≤6 assessed per run; the whole pipeline in one request is the likely cause of partial scans.
-6. From September, still open: the replay check returns a cached snapshot instead of recomputing; `evaluateCriterion(c, c, …)` passes the criterion as the memo; effective tax rate is unavailable for loss years.
+6. From September: **fixed 2026-11-12** — replay now recomputes and compares (mismatch raises an operational alert); `evaluateEntity` passes an explicit memo; alerts disclose estimated values. **By design, not a bug:** effective tax rate (and so NOPAT/ROIC) is unavailable for loss years — unavailable beats wrong. **Still needs a founder decision:** `consecutive_periods` counts fiscal years, not quarters.
 
 ---
 

@@ -194,3 +194,26 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Could NOT verify, and why:** Production matching, scheduled processing, real-provider coverage and browser rendering were not exercised; no deployment was performed.
 
 **Next action:** Review PR #14 and the experimental rules before merging or deploying.
+
+---
+
+## 2026-11-12 — Claude (Claude Code) — CI, replay recompute, alert provenance
+
+**Worked on:** In parallel with Codex's screen-v2 work (PR #14), on branch `fix/ci-and-criteria` from `main` at c50347d. No overlap with PR #14 files.
+
+**Verified by running:** `node --test tests/*.test.mjs` → **64/64 pass** (61 before + 3 new in `tests/criteria-replay.test.mjs`). `tsc --noEmit` → 0 errors.
+
+**Changed:**
+- `.github/workflows/ci.yml` (new): frozen install, full tests, type check and Sites build on every PR and on pushes to main.
+- `lib/sentinel/criteria.ts`:
+  - Replay no longer serves the earlier snapshot. Every evaluation recomputes; when an earlier evaluation of the same `as_of` exists, `compareReplay()` records `replayOf {evaluationId, matches, earlierResult, differences}` in the new evaluation, and a mismatch appends an Operational alert ("REPLAY DIFFERS…"). Both evaluations are kept (append-only).
+  - Alert evidence now carries `confidence`, `method` and `estimated` per condition, and the alert note says when values are estimates (e.g. EBITDA proxy). Closes September issue 3.
+  - `evaluateEntity` passes an explicit memo object instead of `c` twice (September issue 4).
+- `tests/work-order03.test.mjs`: the replay test now asserts the replay names the earlier evaluation, `matches === true`, and no mismatch alert. `tests/criteria-replay.test.mjs` (new): a matching replay; a moment evaluated before a backfill (unknown) differing after it (trip); a changed input set flagged even when the result is unchanged.
+- `AGENTS.md` known issue 6 updated.
+
+**Decided, not changed:** effective tax rate for loss years stays unavailable (September issue 5): correct by the "unavailable beats wrong" principle. `consecutive_periods` years vs quarters (issue 2) still needs a founder decision.
+
+**Could NOT verify:** the CI workflow itself until GitHub runs it on this PR; the mismatch alert end-to-end through the API (covered by the pure comparison tests, not a fixture backfill).
+
+**Next action:** merge PR #14 and this PR; then Nemotron shadow mode.

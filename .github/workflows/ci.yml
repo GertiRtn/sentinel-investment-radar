@@ -1,0 +1,31 @@
+# Runs the full test suite and the Sites production build on every pull
+# request and on pushes to main. Free on GitHub for public repositories.
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+      - name: Tests
+        run: node --test tests/*.test.mjs
+      - name: Type check
+        run: npx tsc --noEmit -p .
+      - name: Sites production build
+        run: pnpm build
