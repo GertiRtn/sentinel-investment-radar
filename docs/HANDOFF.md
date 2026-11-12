@@ -311,3 +311,23 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 - Verified: tests 111/111 (unit + Miniflare smoke for `/following` and `/discovery` ranking), tsc, build. Not checked in a browser.
 - Merge order: #19 → #20 → #21 → this. Then ask Codex to publish the latest main to the Site in one go.
 - Open founder decisions: `consecutive_periods` counts fiscal years (affects Weakening/Broken timing); whether to switch on the shadow reader (SHADOW_READER_ENABLED=1); rotate the Alpaca keys exposed earlier in a ChatGPT chat.
+
+## 2026-11-12 (evening) — Claude Code: research team v1 + offline backtest (founder brief "research team and quantitative research engineering")
+
+**Baseline:** main 07a6573 (PRs 14–22 merged); `node --test tests/*.test.mjs` 111/111 on that commit. The deployed Site revision was not verified from this session.
+
+**Built (branch `research-team-v1`):**
+- `lib/sentinel/evidence-pack.ts` (`evidence-pack-v1`): a point-in-time pack per case. SEC figures are loaded with `companyFile(..., asOf=case time, 'recorded')`, so a fact must be filed and recorded by the case time. Annual: revenue, net income, operating income, CFO, capex, cash, total debt, equity, EPS, diluted shares, share-count change (latest year plus the prior year). Quarterly: three-month revenue, net income and CFO with the same quarter a year earlier. Also the quote, P/E, screen, score, missing items and cautions. Only `shareable` items can reach a model.
+- `lib/sentinel/research-team.ts` (`research-team-v1`, prompt `research-team-prompt-v1`): one call returns evidence / bull (≤3) / bear (≤3) / editor. Strict zod schema; checks on citations, verbatim quotes, numbers, forbidden language and credentials. Errors give a status (`disabled` / `unavailable` / `timeout` / `invalid` / `partial` / `ok`) and fall back to a deterministic rules template.
+- `app/api/research-team/route.ts`: GET runs for a case and the feature state; POST is a synchronous run with the request id as the record id (idempotent), a 20 s per-case cooldown, and append-only `research_run`. Owner-scoped (404 cross-owner). Raw model text is stored but never returned to the browser.
+- `components/sentinel/research-team-panel.tsx` in the brief's case sheet. It shows positives, risks with "would be wrong if", missing information, the editor's open disagreements and checks, and every source with its link, times, staleness and "not sent to any model". It is labelled "Model-assisted research (unvalidated)" or "Rules template — no AI model ran".
+- `lib/sentinel/event-backtest.ts` (offline only, fixtures): next-open fill after signal + latency, explicit spread/fee/slippage on both sides, an SPY comparator with the same costs, rejected fills on missing bars, a clock-order check, determinism.
+- `docs/RESEARCH-ROADMAP.md`: P3 plan, the reference-project review (TradingAgents Apache-2.0, OpenBB Apache-2.0 since v5, Qlib MIT; ideas only, nothing imported) and how the three books map onto the design.
+
+**Verified here:** tests 127/127 after (111 before; none loosened), `tsc --noEmit` clean, `pnpm build` OK. The model path is tested with mocked fetch only. The route is tested in Miniflare with the feature off (as by default), so no network is reachable.
+
+**Not verified:** the real NVIDIA endpoint, free-tier terms and quota for this use, real latency, the live Site, and the browser UI. Discover rows have no case sheet, so the panel is only reachable from the Brief's case sheet.
+
+**Enablement (founder only; not done):** set the Site variable `RESEARCH_TEAM_ENABLED=1` (and optionally `RESEARCH_MODEL` to an allow-listed id). `NVIDIA_API_KEY` is already a Site secret. Leave `SHADOW_READER_ENABLED` as it is.
+
+**Open risks carried forward:** D1 overload in outcome observation (this feature adds no hourly load); Alpaca key rotation still unconfirmed; evidence-score weights unvalidated; IEX is a single-exchange midpoint; share basis unverified; provider news coverage partial.

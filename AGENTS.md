@@ -81,6 +81,16 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
+## Research team (on demand, per case — added 2026-11-12)
+
+`lib/sentinel/evidence-pack.ts`, `lib/sentinel/research-team.ts`, `app/api/research-team/route.ts`, `components/sentinel/research-team-panel.tsx` (in the case sheet).
+
+- **Evidence pack (`evidence-pack-v1`):** deterministic, built from the stored case plus SEC figures filed **and** recorded by the case's assessment time. Every item has an id, source (URL or null), source and capture times, period, unit, currency, confidence and staleness. Missing data is listed, not filled. Only `shareable` items (public headline, provider summary, SEC identity and SEC facts) may reach a model. Quotes, the screen, the score and anything private are never sent.
+- **Run:** synchronous, at most one model call (20 s cap, no retries), only when the user clicks. It is never part of the hourly run. It is off unless the Site variable `RESEARCH_TEAM_ENABLED` is exactly `"1"`. It reuses `NVIDIA_API_KEY`, uses the fixed NVIDIA endpoint, and accepts only models on the allow-list (`RESEARCH_MODEL` optional). When the model is off or fails, a deterministic **rules template** fills the panel, labelled "no AI model ran".
+- **Code enforces the output contract:** a strict schema, citations limited to this pack's shareable ids, verbatim quotes, numbers that must appear in the cited sources, and no buy/sell/hold, targets or probabilities. Failing statements are dropped and logged, never repaired. A credential-like answer is discarded unread.
+- **Records:** append-only `research_run` rows (id = the client's request id, so a retry returns the stored run). A 20 s cooldown applies per case. The research team never changes a case, screen, score, ranking, outcome, alert or trade.
+- Offline only: `lib/sentinel/event-backtest.ts`. Next steps: `docs/RESEARCH-ROADMAP.md`.
+
 ## Out of scope unless the founder asks
 
 Live order execution or broker credentials in this app (a separate, controlled execution service is the agreed direction) · leveraged/forex products · Tier 5 sources · model-generated probabilities.

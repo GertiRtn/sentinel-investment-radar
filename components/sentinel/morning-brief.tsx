@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { friendlyLabel, screenLabel } from "@/lib/sentinel/screen-label";
 import { caseEvidenceScore, SCORE_MEANING } from "@/lib/sentinel/evidence-score";
+import { ResearchTeamPanel } from "./research-team-panel";
 
 /* Morning brief dashboard: bottom line first, takes, radar, watchlist; everything else folded. */
 
@@ -94,6 +95,7 @@ function CaseSheet({ c, onClose }: { c: any | null; onClose: () => void }) {
           <div className="space-y-6 px-4 pb-8 text-sm">
             <p className="text-muted-foreground">{c.event?.source ?? "Unknown source"} · published {dayTime(c.event?.publishedAt)} · assessed {dayTime(c.createdAt)}{c.event?.url && <> · <a className="inline-flex items-center gap-1 text-sky-300 hover:underline" href={c.event.url} target="_blank" rel="noreferrer">original <ExternalLink size={12} /></a></>}</p>
             <ScoreChecklist c={c} />
+            {c.id && <ResearchTeamPanel caseId={c.id} />}
             <div><h4 className="mb-2 font-semibold">Screening rules</h4>
               {c.rules?.length ? <ul className="space-y-1.5">{c.rules.map((r: any) => <li key={r.id} className="flex gap-2"><span className={r.passed ? "text-sky-300" : "text-amber-300"}>{r.passed ? "✓" : "✕"}</span><span><span className="font-medium">{r.id}</span> {r.detail}{r.passed ? "" : " — not met"}</span></li>)}</ul> : <p className="text-muted-foreground">Rules were not evaluated (earlier screen version or data incomplete).</p>}
             </div>
