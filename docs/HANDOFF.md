@@ -303,3 +303,11 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 - All records are append-only signal_log kinds (`practice_trade`, `practice_review`, `practice_mark`); conditional append on the trade count, as with the old ledger. The old $50 ledger stays under a fold.
 - Gross returns: no fees, taxes or slippage, and the page says so. Closed-market quotes are allowed (up to 5 days old, spread ≤ 2%) and labelled with their time.
 - Verified: unit tests (`tests/practice.test.mjs`), a Miniflare API test with mocked IEX quotes in work-order03, tsc, build. Not verified against real Alpaca or in a browser.
+
+## 2026-11-12 — Claude Code: Discover ranking + Following monitor (Batch 4 of 4)
+
+- Discover now opens with "Ranked by evidence — read these first". It covers the last 7 days of cases, one row per symbol (duplicate reports merged and counted), and orders scored cases by evidence score: ties go to the stronger screen label, then the newer report, and unscored cases come last. Each row has a "Why here" line and a "Practice-trade this" link. The raw feed and outcome records sit under a fold, and Discovery now comes above Hot market. `discover-rank-v1`.
+- Following now opens with a thesis monitor (`GET /api/following`, `thesis-monitor-v1`). Each followed company gets a status from the founder's own kill criteria: Broken if any tripped; Weakening if all pass but a condition is already met without its full streak (read from the evaluation snapshot); Holding only if every criterion was evaluated and passes; Can't check if anything is unknown or unevaluated; No thesis if there is no memo or criterion. It also lists the last 7 days of changes: new filings, news, criterion alerts and Sentinel cases with their score. Rows are ordered Broken first and changed first, and a company with nothing new reads "No change this week".
+- Verified: tests 111/111 (unit + Miniflare smoke for `/following` and `/discovery` ranking), tsc, build. Not checked in a browser.
+- Merge order: #19 → #20 → #21 → this. Then ask Codex to publish the latest main to the Site in one go.
+- Open founder decisions: `consecutive_periods` counts fiscal years (affects Weakening/Broken timing); whether to switch on the shadow reader (SHADOW_READER_ENABLED=1); rotate the Alpaca keys exposed earlier in a ChatGPT chat.
