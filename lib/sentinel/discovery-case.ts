@@ -6,6 +6,7 @@ import {cashflowScenarios} from './cashflow-scenarios';
 import {investmentBrief} from './investment-brief';
 import {assessCompanyRelevance} from './news-assessment';
 import {collectStockQuote} from '@/app/api/stock-quote/route';
+import {shadowReadCases} from './shadow-store';
 /** Select one unassessed provider-tagged symbol; prioritisation is research routing, not return prediction. */
 export async function assessDiscoveryQueue(owner:string,email:string,oldestFirst=false){
  const db=database();
@@ -29,12 +30,14 @@ export async function assessDiscoveryQueue(owner:string,email:string,oldestFirst
  }catch(e){const message=e instanceof Error?e.message:'Company assessment failed';await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_attempt',NULL,?)").bind(crypto.randomUUID(),owner,iso(),JSON.stringify({candidateId:row.id,symbol,message})).run();return {status:'failed',candidateId:row.id,symbol,message:'Assessment failed; the candidate will be retried after a six-hour cooldown.',detail:message};}
  const createdAt=iso(),decision=researchDecisionV2({identity,price,brief,asOf:createdAt,topics:event.analysis?.topics}),result={version:'discovery-case-v2',candidateId:row.id,symbol,createdAt,status,conclusion:decision.conclusion,reason:decision.reason,decision,readiness:decision.readiness,rules:decision.rules,event:{headline:event.headline,url:event.url,source:event.source,publishedAt:event.publishedAt,firstObservedAt:event.firstObservedAt,rawEventId:event.rawEventId,analysis:event.analysis,providerSummary:event.providerSummary||null},identity,security,brief,valuation,price,missing:[...missing,'Verify the event and whether the company is directly affected.','Verify security class and share basis; compare price and valuation with market expectations.','Test the investment thesis and likely costs.'],limitations:'Ticker-to-company mapping is not proof that the news affects this company. A headline and IEX quote do not establish fair value or a buy signal.'};
  const id='discovery-case:'+await hash(JSON.stringify([owner,row.id,symbol]));const saved=await db.prepare("INSERT OR IGNORE INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_case',?,?)").bind(id,owner,createdAt,identity?'sec:'+identity.cik:null,JSON.stringify(result)).run();
- return {status,created:!!saved.meta.changes,case:saved.meta.changes?result:null};
+ return {status,created:!!saved.meta.changes,caseId:id,case:saved.meta.changes?result:null};
 }
 
 /** Process a bounded batch, reserving one slot for old work to limit starvation. */
 export async function assessDiscoveryBatch(owner:string,email:string){
  const started=Date.now(),items=[];
  for(let i=0;i<6;i++){if(i>0&&Date.now()-started>=35000)break;const result=await assessDiscoveryQueue(owner,email,i%3===2);if(result.status==='idle')break;items.push(result);}
- return {status:items.some(x=>x.status==='failed')?'partial':items.length?'complete':'idle',items,remaining:null,coolingDown:null,limit:6,timeBudgetMs:35000,notice:'Queue totals temporarily unavailable to reduce database load. Triage uses headline topics and age, not estimated investment returns.'};
+ // Evaluation only: runs after every case in this batch has been created, so it cannot change what was assessed.
+ let shadow:any;try{shadow=await shadowReadCases(owner,items)}catch{shadow={status:'failed',attempted:0}}
+ return {status:items.some(x=>x.status==='failed')?'partial':items.length?'complete':'idle',items,shadow,remaining:null,coolingDown:null,limit:6,timeBudgetMs:35000,notice:'Queue totals temporarily unavailable to reduce database load. Triage uses headline topics and age, not estimated investment returns.'};
 }

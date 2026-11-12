@@ -217,3 +217,24 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Could NOT verify:** the CI workflow itself until GitHub runs it on this PR; the mismatch alert end-to-end through the API (covered by the pure comparison tests, not a fixture backfill).
 
 **Next action:** merge PR #14 and this PR; then Nemotron shadow mode.
+
+---
+
+## 2026-11-12 — Claude (Claude Code) — Nemotron shadow reader (evaluation only)
+
+**Worked on:** Took over from Codex's scaffold (`f8175dd`) on branch `shadow-reader`, from `main` at f681c25.
+
+**Verified by running:** `node --test tests/*.test.mjs` → **80/80** (69 before + 10 in `tests/shadow-reader.test.mjs` + 1 integration test in `work-order03`). `tsc --noEmit` 0 errors. `pnpm build` succeeds. The integration harness now runs with `SHADOW_READER_ENABLED=1` and a mocked NVIDIA endpoint, so every existing batch test also runs with the reader on; all still pass.
+
+**Changed:**
+- `lib/sentinel/shadow-reader.ts`: reader (Nano Omni default; `enable_thinking:false`; temperature 0; 1500 tokens; 8 s timeout; one attempt), thinking/code-fence stripping, strict zod schema, verbatim-quote and number-outside-quote checks, allow-listed `storedReading`, comparison mapping (rules `direct_candidate` ↔ model subject/counterparty; rules topics ↔ model event types) and CSV export with formula-injection guard.
+- `lib/sentinel/shadow-store.ts`: runs after `assessDiscoveryBatch` has created its cases; max 10 readings and 20 s per run; appends `shadow_reading` rows; never throws.
+- `lib/sentinel/discovery-case.ts`: `assessDiscoveryQueue` also returns `caseId`; the batch calls the shadow hook after its loop and reports `shadow: {status, attempted, statuses}`. Case content and conclusions unchanged.
+- `app/api/shadow-comparison/route.ts` (new) and a CSV download link in `components/sentinel/discovery.tsx`.
+- `AGENTS.md`: "Shadow reader" section.
+
+**Design choice:** Codex's plan ran the reader inside each case assessment. That would spend up to 8 s per case from the batch's 35 s budget and reduce how many cases are assessed, a silent product change. It now runs after the loop instead.
+
+**Could NOT verify:** a real call to NVIDIA (no key here, and none should be used in tests); whether the Nano Omni model honours `enable_thinking:false` (handled either way); real latency and the free-tier quota. All are observable after deploy through each reading's `status`, `httpStatus` and `latencyMs`.
+
+**Next action:** founder merges, redeploys the Site, sets `SHADOW_READER_ENABLED=1`. After about a week, download the CSV, label about 100 rows, and compare.

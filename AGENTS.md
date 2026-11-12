@@ -62,6 +62,19 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
+## Shadow reader (evaluation only — added 2026-11-12)
+
+`lib/sentinel/shadow-reader.ts`, `lib/sentinel/shadow-store.ts`, `app/api/shadow-comparison/route.ts`.
+
+- NVIDIA Nemotron (free developer API) reads discovery headlines **in parallel with the rules** and its output is stored as `shadow_reading` records. It **must not feed** any conclusion, rule, queue order, label or alert until the founder approves it, based on the labelled comparison.
+- Off unless the Site variable `SHADOW_READER_ENABLED` is exactly `"1"`. Key: Site secret `NVIDIA_API_KEY`. Model: optional `SHADOW_MODEL` (defaults to Nemotron 3 Nano Omni).
+- Runs **after** the batch has created its cases (max 10 readings, 20 s), so it cannot change what was assessed. Every failure is recorded as `unavailable`/`invalid`, never thrown.
+- Sends only the public headline, provider summary, SEC company name and ticker. Nothing from journal, memos, watchlist or positions.
+- Code, not the model, enforces: strict schema, verbatim quotes, no numbers outside quotes (invariant 5). Stored rows are built from an allow-list; the key cannot be stored.
+- Comparison: `GET /api/shadow-comparison`, labelling sheet at `?format=csv`.
+
+---
+
 ## Out of scope unless the founder asks
 
 Live order execution or broker credentials in this app (a separate, controlled execution service is the agreed direction) · leveraged/forex products · Tier 5 sources · model-generated probabilities.
