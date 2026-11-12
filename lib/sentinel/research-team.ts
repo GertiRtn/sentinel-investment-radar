@@ -64,7 +64,7 @@ const SYSTEM = [
   'If the evidence is thin, say so; an empty bull or bear list is acceptable.',
 ].join(' ');
 
-export type TeamConfig = { enabled?: string; key?: string; model?: string };
+export type TeamConfig = { enabled?: string; key?: string; model?: string; timeoutMs?: number }; // timeoutMs can only shorten the cap (tests)
 export type TeamStatus = 'ok' | 'partial' | 'invalid' | 'unavailable' | 'timeout' | 'disabled';
 export type Dropped = { role: string; reason: string; text: string };
 export type TeamResult = {
@@ -74,7 +74,8 @@ export type TeamResult = {
 };
 
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
-const numbersIn = (s: string) => (s.match(/\d[\d.,]*/g) || []).map(n => n.replace(/[.,]+$/, ''));
+// SEC form names (10-K, 10-Q/A, 8-K…) and quarter labels are names, not figures.
+const numbersIn = (s: string) => (s.replace(/\b(10-K|10-Q|8-K|20-F|40-F|6-K|S-1|DEF 14A)(\/A)?\b/gi, ' ').replace(/\bQ[1-4]\b/g, ' ').match(/\d[\d.,]*/g) || []).map(n => n.replace(/[.,]+$/, ''));
 const FORBIDDEN = /\b(buy|sell|hold (rating|recommendation)|(rated|rate it) hold|price target|target price|probabilit\w*|expected return|upside of|downside of|odds|likely to (rise|fall|beat|miss)|confidence level|recommend\w*)\b/i;
 const SECRET = /nvapi-[A-Za-z0-9_\-]{6,}|Bearer\s+[A-Za-z0-9._\-]{10,}|sk-[A-Za-z0-9]{10,}/;
 
@@ -106,7 +107,8 @@ export function checkStatement(texts: string[], ids: string[] | undefined, quote
     if (!ids?.includes(q.source)) return 'quote source is not among the point’s citations';
     if (!src.text || !norm(src.text).includes(norm(q.text))) return 'quote not found verbatim in its cited source';
   }
-  const allowed = norm(citedText(ids ?? [], byId) + ' ' + (quotes ?? []).map(q => q.text).join(' '));
+  // Cited statements may use numbers from their citations; uncited ones (missing items, checks) only numbers found somewhere in the pack.
+  const allowed = norm((needCites ? citedText(ids ?? [], byId) : citedText([...byId.keys()], byId)) + ' ' + (quotes ?? []).map(q => q.text).join(' '));
   const extra = numbersIn(all).filter(n => !allowed.includes(n));
   if (extra.length) return `number not found in cited sources: ${extra.join(', ')}`;
   return null;
@@ -198,7 +200,8 @@ export async function runResearchTeam(pack: EvidencePack, config: TeamConfig, fe
   if (!(RESEARCH_ALLOWED_MODELS as readonly string[]).includes(model)) return base('unavailable', 'The configured model is not on the allow-list.');
   if (!config.key) return base('unavailable', 'No model key is configured.');
 
-  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), RESEARCH_TIMEOUT_MS);
+  const limit = Math.min(RESEARCH_TIMEOUT_MS, config.timeoutMs ?? RESEARCH_TIMEOUT_MS);
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), limit);
   let payload: any, httpStatus: number | null = null;
   try {
     const response = await fetcher(RESEARCH_ENDPOINT, {
@@ -211,7 +214,7 @@ export async function runResearchTeam(pack: EvidencePack, config: TeamConfig, fe
     if (!response.ok) return base('unavailable', response.status === 429 ? 'The model service is rate-limiting (HTTP 429). Try later.' : response.status === 401 || response.status === 403 ? `The model service refused access (HTTP ${response.status}).` : `The model service returned HTTP ${response.status}.`, { model, httpStatus });
     payload = await response.json();
   } catch {
-    return base(controller.signal.aborted ? 'timeout' : 'unavailable', controller.signal.aborted ? `No answer within ${RESEARCH_TIMEOUT_MS / 1000} s.` : 'The model service could not be reached.', { model, httpStatus });
+    return base(controller.signal.aborted ? 'timeout' : 'unavailable', controller.signal.aborted ? `No answer within ${Math.round(limit / 1000)} s.` : 'The model service could not be reached.', { model, httpStatus });
   } finally { clearTimeout(timer); }
 
   let raw: string | null = typeof payload?.choices?.[0]?.message?.content === 'string' ? payload.choices[0].message.content : null;
