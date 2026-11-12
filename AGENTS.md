@@ -32,7 +32,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
-## Current system (deployed v36, verified by reading and by `node --test tests/*.test.mjs`: 61/61 pass on 2026-11-12)
+## Current system (deployed v36 plus the Cloudflare migration work; `node --test tests/*.test.mjs`: 80/80 pass on 2026-11-12)
 
 - Server-side persistence on Cloudflare D1, raw captures in D1/R2 with SHA-256 dedup.
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
@@ -45,9 +45,18 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ### How it runs and deploys (important)
 
-- **Hosting is ChatGPT Sites.** Deployment happens from the Sites project, not from GitHub. A merged PR is not live until it is deployed there.
-- **There is no scheduler in this code.** The hourly run is an external ChatGPT scheduled task calling the MCP tool `refresh_saved_company_filings` (`app/mcp/route.ts`), which runs filings, news, discovery, assessment and outcomes in one request.
-- **Auth trusts platform headers** (`oai-authenticated-user-id`, `oai-authenticated-user-email`) and `getChatGPTUser()`. These are safe only because the Sites platform sets them. **Before hosting anywhere else, replace authentication first**, or anyone can impersonate the owner.
+The same code builds for two hosts. Migration to the owner's own Cloudflare account is in progress (`docs/MIGRATION-CLOUDFLARE.md`); until it's complete, **Sites is the live app**.
+
+| | ChatGPT Sites (`pnpm build`) | Own Cloudflare (`pnpm build:cloudflare`, `pnpm deploy:cloudflare`) |
+|---|---|---|
+| Config | inline in `vite.config.ts` + `.openai/hosting.json` | `deploy/cloudflare/wrangler.jsonc` (sets `SENTINEL_HOST=cloudflare`) |
+| Sign-in | Sites platform headers (`oai-authenticated-*`) | Cloudflare Access JWT, verified in `lib/sentinel/access-jwt.ts`; ChatGPT headers ignored; fails closed |
+| Scheduling | external ChatGPT task → `/mcp` tool `refresh_saved_company_filings` (all stages, one request) | Cron Triggers → `worker/index.ts` → `lib/sentinel/scheduled.ts` (stages split across 3 schedules; each run appends a `scheduled_run` record) |
+
+- All identity goes through `app/auth.ts` (`getUser()`, `mcpCaller()`). Never read `oai-authenticated-*` headers anywhere else.
+- **Never add a root `wrangler.jsonc`.** The Cloudflare Vite plugin auto-loads it into the Sites build, which would switch Sites into Access mode and lock the owner out.
+- Records stay owned by the original ChatGPT user id: on Cloudflare, `SENTINEL_OWNER_ID` is set to that id, so nothing is rewritten.
+- Pipeline stages live in `lib/sentinel/pipeline.ts` (moved verbatim from the MCP route) and are shared by both hosts.
 
 ---
 
@@ -56,8 +65,8 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 1. `INVESTIGATE` from `research-screen-v1` is a data-completeness gate (company named + P/E computable + recent revenue). The P/E value, valuation, price move and news direction do not affect it. INVESTIGATE-vs-WAIT outcomes are therefore confounded with data quality.
 2. `INVESTIGATE` is also hard-coded on every raw discovery candidate (`discovery.ts`) and every watchlist news case (`app/mcp/route.ts`), giving one label three meanings.
 3. The outcome horizon is 5 trading days only; it needs longer horizons (e.g. 20/60/120) as separate records.
-4. Outcome capacity is one per run (max 24/day) against up to 144 cases/day: the backlog grows without bound.
-5. Capacity: ~250 headlines collected vs ≤6 assessed per run; the whole pipeline in one request is the likely cause of partial scans.
+4. Outcome capacity: one per run on Sites (max 24/day) against up to 144 cases/day. On Cloudflare the outcomes cron observes up to 10 per run (240/day); still worth batching the price requests.
+5. Capacity: ~250 headlines collected vs ≤6 assessed per run. On Sites the whole pipeline runs in one request (likely cause of partial scans). On Cloudflare discovery+assessment run every 15 min in their own invocation (≤24 assessed/hour); measure via `scheduled_run` records before tuning.
 6. From September, still open: the replay check returns a cached snapshot instead of recomputing; `evaluateCriterion(c, c, …)` passes the criterion as the memo; effective tax rate is unavailable for loss years.
 
 ---

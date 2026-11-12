@@ -1,0 +1,38 @@
+// Own-Cloudflare deployment of Sentinel. Used only by `pnpm build:cloudflare`
+// and `pnpm deploy:cloudflare`. It lives here, not in the repo root, because the
+// Cloudflare Vite plugin auto-loads a root wrangler.jsonc into every build,
+// which would switch the ChatGPT Sites build into Access mode and lock it.
+// Paths below are relative to this file.
+// Setup steps: docs/MIGRATION-CLOUDFLARE.md
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "sentinel",
+  "main": "../../worker/index.ts",
+  "compatibility_date": "2026-05-15",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Non-secret switch: turns on Cloudflare Access verification and cron work.
+  // Owner id/email, Access team domain and audience are set as secrets
+  // (`wrangler secret put ...`), never committed here. This repo is public.
+  "vars": { "SENTINEL_HOST": "cloudflare" },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sentinel",
+      // Replace with the id printed by `wrangler d1 create sentinel`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../drizzle"
+    }
+  ],
+  "r2_buckets": [{ "binding": "ARCHIVE", "bucket_name": "sentinel-archive" }],
+
+  // Keep identical to SCHEDULES in lib/sentinel/scheduled.ts. Times are UTC.
+  "triggers": { "crons": ["*/15 * * * *", "7 * * * *", "37 * * * *"] },
+
+  // The app is served on workers.dev behind Cloudflare Access (see the runbook).
+  // Preview URLs stay off so there is no second, unprotected address.
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}

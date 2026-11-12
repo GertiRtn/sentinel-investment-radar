@@ -12,6 +12,10 @@ const { d1, r2 } = hostingConfig;
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
+// `SENTINEL_TARGET=cloudflare` builds for the owner's own Cloudflare account
+// (deploy/cloudflare/wrangler.jsonc, Cloudflare Access sign-in, Cron Triggers). Unset, the build
+// is exactly the ChatGPT Sites build.
+const ownCloudflare = process.env.SENTINEL_TARGET === "cloudflare";
 
 const localBindingConfig = {
   main: "vinext/server/fetch-handler",
@@ -57,11 +61,13 @@ export default defineConfig(async () => {
     },
     plugins: [
       vinext(),
-      sites({ mockAuth: !managedLinux }),
+      ...(ownCloudflare ? [] : [sites({ mockAuth: !managedLinux })]),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         inspectorPort: false,
-        config: localBindingConfig,
+        ...(ownCloudflare
+          ? { configPath: "./deploy/cloudflare/wrangler.jsonc" }
+          : { config: localBindingConfig }),
       }),
     ],
   };

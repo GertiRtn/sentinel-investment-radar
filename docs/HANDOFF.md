@@ -165,3 +165,40 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Could NOT verify, and why:** whether v36 is exactly what is live (the brief cites "Library version 69", which may be a different counter); whether the hourly ChatGPT scheduled task is still running; production queue size and outcome counts; whether the exposed Alpaca paper keys were rotated. None of these are reachable from the repository.
 
 **Next action:** founder merges this PR. Then: rotate Alpaca keys; split the INVESTIGATE label and pre-register a real screening rule; add 20/60/120-day outcomes with batched fetching; decide hosting (stay on Sites vs own Cloudflare, which needs auth replaced first).
+
+---
+
+## 2026-11-12 — Claude (Claude Code) — own-Cloudflare migration: sign-in, Cron Triggers, data import
+
+**Worked on:** Founder chose to move hosting from ChatGPT Sites to his own Cloudflare account (option 2). Built everything that can be built and tested without his account; branch `migrate/own-cloudflare`, stacked on `consolidate/deployed-v36` (PR #12).
+
+**Verified by running:**
+- `node --test tests/*.test.mjs`: **80/80 pass** (61 existing + 19 new: `access-auth`, `scheduled`, `import`). `tsc --noEmit`: 0 errors repo-wide.
+- `pnpm build` (Sites): output identical in shape to before (name `site-creator-vinext-starter`, no vars, no crons). This was checked explicitly after finding that a root `wrangler.jsonc` leaks into the Sites build; the config was moved to `deploy/cloudflare/`.
+- `pnpm build:cloudflare` + `wrangler deploy --dry-run`: 352 KiB gzipped, bindings DB, ARCHIVE, SENTINEL_HOST.
+- `wrangler d1 migrations apply --local` with the new config: all 3 migrations apply to a fresh D1; 36 triggers present.
+- Built Worker under `wrangler dev`: no credentials → 401; forged `oai-authenticated-*` headers → 401; junk Access token → 401; `/mcp` with forged header → refused.
+- Built Worker under Miniflare, each cron fired: one `scheduled_run` record per run; the missing Alpaca key is recorded as `discovery:failed` rather than hidden; an unknown cron is flagged; UPDATE on the record is refused by the trigger.
+- Import round trip (tests/import.test.mjs): every table copied into a fresh migrated D1 matches by content digest; re-run is harmless; imported rows stay immutable; bad exports are rejected before anything is written.
+
+**Changed:**
+- `app/auth.ts` (new): single identity decision. Sites: unchanged header behaviour. Own Cloudflare: Access JWT verified (`lib/sentinel/access-jwt.ts`: RS256 signature, issuer, audience, exp/nbf, app-token type, owner email) and mapped to `SENTINEL_OWNER_ID`; fails closed if any setting is missing. `lib/sentinel/api.ts`, watchlist and filing-explanation routes, and `app/mcp/route.ts` now use it.
+- `lib/sentinel/pipeline.ts` (new): watchlist news and filings stages moved verbatim out of `app/mcp/route.ts`; MCP output unchanged.
+- `lib/sentinel/scheduled.ts`, `worker/index.ts` (new): Cron Trigger handler with three schedules (discovery+assessment every 15 min; watchlist hourly :07; outcomes hourly :37, up to 10 per run). Appends `scheduled_run` records. Never runs on Sites.
+- `deploy/cloudflare/wrangler.jsonc` (new), `vite.config.ts` (`SENTINEL_TARGET=cloudflare` switch), `package.json` scripts `build:cloudflare`, `deploy:cloudflare`, `db:migrate:cloudflare`.
+- `scripts/migrate/plan.mjs`, `scripts/migrate/import-sites-data.mjs` (new): validate, import and digest-verify a Sites export; verify R2 originals against their content-hash keys; print the owner id to configure.
+- `docs/MIGRATION-CLOUDFLARE.md` (new): step-by-step runbook. `.gitignore`: export folders and `.dev.vars`. `README.md`, `AGENTS.md` updated.
+- Tests: `persistence` and `work-order03` harnesses gained a `next/headers` stub (needed because `app/auth.ts` imports it); assertions unchanged.
+- No schema, migration, trigger or dependency changes.
+
+**Open / broken:**
+- `wrangler dev --test-scheduled` cannot deliver cron events to this Worker locally (`DataCloneError: ScheduledController`, raised inside wrangler's assets proxy, not Sentinel code). The handler was verified through Miniflare directly instead.
+- The Sites build still contains the new code paths, but they are inert there (`SENTINEL_HOST` unset). Merging does not change Sites behaviour; this was verified in tests, not in production.
+
+**Could NOT verify, and why:**
+- The positive Access path against real Cloudflare (a genuine Access token, the team's real signing keys): no account or network egress here. Covered by unit tests with locally generated RSA keys; must be smoke-tested at runbook step 9.
+- The D1 REST import (`--execute`) and R2 upload against a real account: same reason. Planning, validation and digest verification are tested.
+- Whether Codex/ChatGPT can export R2 objects from Sites. The runbook has a fallback.
+- Real CPU and wall time of the cron stages on Workers Paid.
+
+**Next action:** founder merges #12, then this PR, then follows `docs/MIGRATION-CLOUDFLARE.md` (Workers Paid, rotated Alpaca keys, Sites export). After cut-over: the INVESTIGATE-label split and 20/60/120-day outcomes.

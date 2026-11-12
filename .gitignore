@@ -47,3 +47,8 @@ next-env.d.ts
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Local Wrangler secrets and Sentinel data exports (personal records; this repo is public)
+.dev.vars*
+sentinel-export*/
+*.sentinel-export.zip

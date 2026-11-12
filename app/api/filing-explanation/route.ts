@@ -1,5 +1,5 @@
 import {env} from 'cloudflare:workers';
-import {getChatGPTUser} from '@/app/chatgpt-auth';
+import {getUser} from '@/app/auth';
 import {identity,body,json,failure,ApiError} from '@/lib/sentinel/api';
 import {database,hash,iso} from '@/db/store';
 import {companyFile,rawText,secToken} from '@/lib/sentinel/edgar';
@@ -7,7 +7,7 @@ import {companySummary} from '@/lib/sentinel/company-summary';
 import {extractRevenueExplanation} from '@/lib/sentinel/filing-explanation';
 
 export async function POST(request:Request){try{
- const owner=await identity(request),user=await getChatGPTUser(),d=await body(request);
+ const owner=await identity(request),user=await getUser(),d=await body(request);
  if(typeof d.entity!=='string'||d.mode!=='public'||d.historical!==false)throw new ApiError(400,'Filing explanations are available only for the current public view.');
  const db=database();const watch=await db.prepare('SELECT entity_id FROM entity_watch WHERE owner=? AND entity_id=?').bind(owner,d.entity).first();if(!watch)throw new ApiError(404,'Saved company not found');
  const company=await companyFile(d.entity,iso(),'public',owner),summary=companySummary(company.figures);const current=summary.rows.find(r=>r.metric==='revenue')?.current;
