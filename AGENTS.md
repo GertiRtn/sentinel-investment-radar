@@ -40,7 +40,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - Cases: `lib/sentinel/discovery-case.ts`, up to 6 per run with a 35 s budget, one slot in three oldest-first. Only `topic match` candidates are assessed.
 - Screen: `researchDecision()` in `lib/sentinel/price-assessment.ts` (`research-screen-v1`).
 - Indicative P/E from an IEX midpoint and reported annual diluted EPS; cash-flow scenarios (fixed 12% discount, ±5% growth, 5 years).
-- Outcomes: `lib/sentinel/outcome-collector.ts`, 5 matched trading days vs SPY, gross, one case per run.
+- Outcomes: `lib/sentinel/outcome-collector.ts`, 5/20/60/120 matched trading days vs SPY, gross, up to 8 per run.
 - Journal, thesis memos, kill criteria, practice portfolio.
 
 ### How it runs and deploys (important)
@@ -55,8 +55,8 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 1. Fixed by research-screen-v2 on 2026-11-12 for new cases; historical `INVESTIGATE` from `research-screen-v1` is a data-completeness gate (company named + P/E computable + recent revenue). The P/E value, valuation, price move and news direction do not affect it. INVESTIGATE-vs-WAIT outcomes are therefore confounded with data quality.
 2. Fixed by research-screen-v2 on 2026-11-12 for new records; previously `INVESTIGATE` was hard-coded on every raw discovery candidate (`discovery.ts`) and every watchlist news case (`app/mcp/route.ts`), giving one label three meanings.
-3. The outcome horizon is 5 trading days only; it needs longer horizons (e.g. 20/60/120) as separate records.
-4. Outcome capacity is one per run (max 24/day) against up to 144 cases/day: the backlog grows without bound.
+3. **Fixed 2026-11-12:** outcomes are recorded at 5, 20, 60 and 120 matched trading-day intervals, one record per horizon (`horizonIntervals`). Pre-existing records are the 5-interval horizon. Never compare across horizons.
+4. **Improved 2026-11-12:** `observeOutcomes` checks up to 8 (case, horizon) pairs per run within 20 s (was 1). Each pair still fetches the stock and SPY separately; batching those requests is the next step if the `outcomeObservation` counts show a backlog.
 5. Capacity: ~250 headlines collected vs ≤6 assessed per run; the whole pipeline in one request is the likely cause of partial scans.
 6. From September: **fixed 2026-11-12** — replay now recomputes and compares (mismatch raises an operational alert); `evaluateEntity` passes an explicit memo; alerts disclose estimated values. **By design, not a bug:** effective tax rate (and so NOPAT/ROIC) is unavailable for loss years — unavailable beats wrong. **Still needs a founder decision:** `consecutive_periods` counts fiscal years, not quarters.
 
