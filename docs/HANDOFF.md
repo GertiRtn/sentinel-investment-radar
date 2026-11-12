@@ -274,3 +274,11 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Could NOT verify:** how the page looks with real data (no browser or sign-in here). The founder should check it after publishing.
 
 **Next action:** founder merges, publishes, opens /brief, and gives feedback. If approved, make /brief the home page.
+
+## 2026-11-12 — Claude Code: navigation restructure (Batch 1 of 4)
+
+- Four main tabs: **Brief** (home, embeds the morning brief), **Discover** (was Hot market + Market discovery), **Following** (was Watchlist + Thesis checks + Alerts), **Practice** (was Trading pilot). Everything else sits in a **Library** dropdown.
+- Old tab names still resolve through `TAB_ALIAS` in `app/page.tsx`, so existing internal links keep working. `/brief` still works as its own page (`components/sentinel/morning-brief.tsx`, `MorningBriefView`).
+- Plain labels for v2 screen results only: INVESTIGATE → "Strong case", MONITOR → "Watch", WAIT → "Not enough data" (`friendlyLabel`, exact match). v1 labels are unchanged ("Data ready (v1 label)"), so a v1 data-completeness pass never shows as a strong case.
+- No data, schema or rule changes. Verified: `node --test tests/*.test.mjs` 90/90, `tsc --noEmit` clean, `pnpm build` OK. UI not checked in a browser. Look at it on the Site after publishing.
+- Next: Batch 2 (evidence score 0–100, needs an AGENTS invariant 6 amendment with the founder's approval), Batch 3 (Practice rebuild), Batch 4 (Discover ranking + Following thesis monitor).
