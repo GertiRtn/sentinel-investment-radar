@@ -257,3 +257,20 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Could NOT verify:** real Alpaca bar coverage over 120 trading days for thinly traded IEX symbols (missing bars give `pending`, never a guess), and real run time on Sites.
 
 **Next action:** founder merges and publishes. Watch `outcomeObservation.counts` in the hourly run output for backlog.
+
+---
+
+## 2026-11-12 — Claude (Claude Code) — morning-brief dashboard at /brief
+
+**Worked on:** The founder asked for an executive-summary dashboard ("save me time, show only what matters"). The design was researched (BLUF, sell-side morning note, progressive disclosure) and prototyped in Lovable (project "Sentinel Research Dashboard", sample data only). Lovable's free credits ran out, so the dashboard layout was built directly in Sentinel. Branch `morning-brief` from `main` at 9236d69.
+
+**Verified by running:** `node --test tests/*.test.mjs` → **90/90** (83 before + 6 in `tests/morning-brief.test.mjs` + 1 integration test). `tsc` 0 errors; `pnpm build` OK; locally `/brief` returns 200 and `/api/morning-brief` returns 401 without sign-in.
+
+**Changed:**
+- `lib/sentinel/morning-brief.ts` (pure): bottom line (conclusion → radar → watchlist → system warning, including "no scan for N hours"), takes (v2 INVESTIGATE, max 3; why/check lines from the existing `news-assessment` templates; one key fact with source), radar (v2 MONITOR, closest misses first, reason derived from stored rule results), waiting, status level, outcome counts per horizon (counts only, no averages).
+- `app/api/morning-brief/route.ts`: loads the owner's last-24 h cases, watched entities with filings and news from that window, the last checkpoint, queue size, outcome counts and shadow readings, plus case details for the side panel.
+- `app/brief/page.tsx`: dashboard layout in Sentinel's existing theme. `app/page.tsx`: "Morning brief →" link in the header. The home page is otherwise unchanged.
+
+**Could NOT verify:** how the page looks with real data (no browser or sign-in here). The founder should check it after publishing.
+
+**Next action:** founder merges, publishes, opens /brief, and gives feedback. If approved, make /brief the home page.

@@ -42,6 +42,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - Indicative P/E from an IEX midpoint and reported annual diluted EPS; cash-flow scenarios (fixed 12% discount, ±5% growth, 5 years).
 - Outcomes: `lib/sentinel/outcome-collector.ts`, 5/20/60/120 matched trading days vs SPY, gross, up to 8 per run.
 - Journal, thesis memos, kill criteria, practice portfolio.
+- Morning brief (`/brief`, `GET /api/morning-brief`, builder `lib/sentinel/morning-brief.ts`): executive summary of the last 24 h, bottom line first. Every sentence is assembled from stored records and rule templates (no model text, no estimated numbers); only `research-screen-v2` cases become takes or radar.
 
 ### How it runs and deploys (important)
 
