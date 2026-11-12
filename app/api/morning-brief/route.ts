@@ -2,6 +2,7 @@ import {env} from 'cloudflare:workers';
 import {database} from '@/db/store';
 import {identity,json,failure} from '@/lib/sentinel/api';
 import {buildMorningBrief,BRIEF_WINDOW_HOURS} from '@/lib/sentinel/morning-brief';
+import {caseEvidenceScore} from '@/lib/sentinel/evidence-score';
 export const dynamic='force-dynamic';
 
 /** The executive morning brief for the signed-in owner, built from stored records only. */
@@ -30,6 +31,6 @@ export async function GET(request:Request){
    outcomeCounts:Object.fromEntries(counts.map(c=>[Number(c.h),c.n])),
    shadow:{enabled:(env as unknown as {SHADOW_READER_ENABLED?:string}).SHADOW_READER_ENABLED==='1',readings:shadowReadings?.n??0}});
   // Full case records for the side panel (same owner, same window).
-  return json({...brief,caseDetails:Object.fromEntries(cases.map(c=>[c.id,{symbol:c.symbol,conclusion:c.conclusion,reason:c.reason,decision:c.decision,rules:c.rules??[],readiness:c.readiness??null,event:c.event,identity:c.identity?{name:c.identity.name,cik:c.identity.cik,relevance:c.identity.relevance}:null,price:c.price,evidence:c.brief?.evidence??[],missing:c.missing??[],createdAt:c.createdAt}]))});
+  return json({...brief,caseDetails:Object.fromEntries(cases.map(c=>[c.id,{symbol:c.symbol,conclusion:c.conclusion,reason:c.reason,decision:c.decision,rules:c.rules??[],readiness:c.readiness??null,event:c.event,identity:c.identity?{name:c.identity.name,cik:c.identity.cik,relevance:c.identity.relevance}:null,price:c.price,evidence:c.brief?.evidence??[],missing:c.missing??[],createdAt:c.createdAt,evidenceScore:caseEvidenceScore(c)}]))});
  }catch(e){return failure(e)}
 }

@@ -20,7 +20,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 5. **No model-generated numbers.** No probability, forecast, score or estimate produced by a language model reaches the UI. Probabilities are the user's own, recorded before the outcome. Extraction from a source must cite the span; uncited claims are dropped.
 
-6. **No composite scores presented as forecasts.** Separate assessments only. A queue-priority order is research routing, never a return forecast.
+6. **No composite scores presented as forecasts.** A queue-priority order is research routing, never a return forecast. *Amended 2026-11-12 with the founder's explicit approval* ("We have to build such algorithms or systems that recommend that score based on the information we have"): one composite is allowed, the **evidence score** (`lib/sentinel/evidence-score.ts`, `evidence-score-v1`). It is a published checklist of pass/fail/unknown checks with fixed points (sum = 100), computed only from stored, sourced records, shown with its full checklist and always labelled as evidence strength, **never** as a probability, expected return or buy signal. Unknown checks score 0 and are shown as unknown; below 60 known points there is no score. Changing a weight or check means a new version, never an edit in place. Its usefulness is judged by outcomes per score band before anyone relies on it.
 
 7. **Alerts inform, never instruct.** No "buy", "sell" or price target in any alert or case body. `INVESTIGATE` means "warrants research", `WAIT` means "required evidence is missing". Buy/sell labels are a future experiment that needs explicit rules and prospective validation first.
 
@@ -43,6 +43,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - Outcomes: `lib/sentinel/outcome-collector.ts`, 5/20/60/120 matched trading days vs SPY, gross, up to 8 per run.
 - Journal, thesis memos, kill criteria, practice portfolio.
 - Navigation (2026-11-12): main tabs Brief (home) / Discover / Following / Practice; the rest under a Library menu. Old tab names map via `TAB_ALIAS` in `app/page.tsx`.
+- Evidence score 0–100 (`evidence-score-v1`, see invariant 6): stored on every new discovery case with the quarterly revenue comparison it used; older cases are recomputed from their stored fields with the quarter unknown. The brief ranks strong cases and watch items by it.
 - Morning brief (`/brief`, `GET /api/morning-brief`, builder `lib/sentinel/morning-brief.ts`): executive summary of the last 24 h, bottom line first. Every sentence is assembled from stored records and rule templates (no model text, no estimated numbers); only `research-screen-v2` cases become takes or radar.
 
 ### How it runs and deploys (important)

@@ -8,7 +8,9 @@
  * (AGENTS.md invariants 5–7). Pure: the API route loads records, this shapes them.
  */
 
-export const BRIEF_VERSION = 'morning-brief-v1';
+import { caseEvidenceScore } from './evidence-score';
+
+export const BRIEF_VERSION = 'morning-brief-v2';
 export const BRIEF_WINDOW_HOURS = 24;
 const MAX_TAKES = 3, MAX_RADAR = 6, MAX_WAITING = 25, STALE_RUN_HOURS = 3;
 
@@ -55,6 +57,18 @@ export function radarReason(c: BriefCase): string {
   return parts.length ? parts.join(' · ') : (c?.reason ?? 'A screening rule was not met.');
 }
 
+/** Evidence score summary for display; the full checklist stays on the case. */
+export function scoreOf(c: BriefCase) {
+  const e = caseEvidenceScore(c);
+  return { score: e.score, band: e.band, status: e.status, coverage: e.coverage, version: e.version,
+    passed: e.checks.filter(x => x.state === 'pass').map(x => x.label),
+    failed: e.checks.filter(x => x.state === 'fail').map(x => x.label),
+    unknown: e.checks.filter(x => x.state === 'unknown').map(x => x.label) };
+}
+/** Highest evidence score first; unscored last; ties keep their existing order. */
+const byScore = (a: BriefCase, b: BriefCase) => (caseEvidenceScore(b).score ?? -1) - (caseEvidenceScore(a).score ?? -1);
+const scoreText = (c: BriefCase) => { const e = caseEvidenceScore(c); return e.score === null ? '' : ` (evidence ${e.score}/100)`; };
+
 function takeOf(c: BriefCase) {
   const a = c?.event?.analysis ?? {};
   return {
@@ -64,6 +78,7 @@ function takeOf(c: BriefCase) {
     whyItMatters: a.whyReview?.[0] ?? null,
     checkFirst: a.questions?.[0] ?? 'Verify the original report and whether it concerns this company.',
     keyFact: keyFact(c),
+    evidence: scoreOf(c),
   };
 }
 
@@ -80,9 +95,9 @@ export function buildMorningBrief(input: BriefInput) {
   const nowMs = Date.parse(input.now), since = new Date(nowMs - BRIEF_WINDOW_HOURS * 3600000).toISOString();
   const recent = latestPerSymbol(input.cases.filter(c => String(c.createdAt) >= since));
   const v2 = (c: BriefCase) => c?.decision?.version === 'research-screen-v2';
-  const investigate = recent.filter(c => v2(c) && c.conclusion === 'INVESTIGATE');
+  const investigate = recent.filter(c => v2(c) && c.conclusion === 'INVESTIGATE').sort(byScore);
   const monitor = recent.filter(c => v2(c) && c.conclusion === 'MONITOR')
-    .sort((a, b) => (a.rules ?? []).filter((r: any) => !r.passed).length - (b.rules ?? []).filter((r: any) => !r.passed).length);
+    .sort((a, b) => byScore(a, b) || (a.rules ?? []).filter((r: any) => !r.passed).length - (b.rules ?? []).filter((r: any) => !r.passed).length);
   const waiting = recent.filter(c => !(v2(c) && (c.conclusion === 'INVESTIGATE' || c.conclusion === 'MONITOR')));
 
   const watchChanges = input.watch.filter(w => w.filings.length || w.headlines.length);
@@ -92,8 +107,8 @@ export function buildMorningBrief(input: BriefInput) {
 
   // ---- the bottom line: conclusion first, then what changed, then anything that needs fixing
   const s: string[] = [];
-  if (investigate.length === 1) s.push(`One case is worth a closer look: ${investigate[0].symbol} — ${investigate[0].event?.headline ?? 'see the take below'}.`);
-  else if (investigate.length > 1) s.push(`${investigate.length} cases are worth a closer look, led by ${investigate[0].symbol} — ${investigate[0].event?.headline ?? ''}.`);
+  if (investigate.length === 1) s.push(`One case is worth a closer look: ${investigate[0].symbol}${scoreText(investigate[0])} — ${investigate[0].event?.headline ?? 'see the take below'}.`);
+  else if (investigate.length > 1) s.push(`${investigate.length} cases are worth a closer look, led by ${investigate[0].symbol}${scoreText(investigate[0])} — ${investigate[0].event?.headline ?? ''}.`);
   else if (recent.length) s.push('No case met all three screening rules in the last 24 hours.');
   else s.push('Sentinel assessed no new cases in the last 24 hours.');
   if (monitor.length) s.push(`${plural(monitor.length, 'more case has', 'more cases have')} complete data but missed a rule.`);

@@ -56,9 +56,10 @@ test('watchlist changes, outcome counts and the shadow reader are reported as co
  assert.equal(r.status.shadowReader,'On · 7 readings in 24 h');
 });
 
-test('no investment instructions or invented scores anywhere in the brief',()=>{
+test('no investment instructions or probabilities anywhere in the brief; the only score is the published evidence checklist',()=>{
  const r=B.buildMorningBrief({...base,cases:[kase({symbol:'EXMP',conclusion:'INVESTIGATE'}),kase({symbol:'COST',conclusion:'MONITOR',rules:rules(false,true,true)})]});
- const text=JSON.stringify(r);assert.doesNotMatch(text,/\b(buy|sell|hold|price target|score|probability|confidence)\b/i);
+ const text=JSON.stringify(r);assert.doesNotMatch(text,/\b(buy|sell|hold|price target|probability|confidence)\b/i);
+ for(const t of [...r.takes,...r.radar])assert.equal(t.evidence.version,'evidence-score-v1','scores come only from the evidence checklist (invariant 6 as amended 2026-11-12)');
  assert.doesNotMatch(readFileSync('app/brief/page.tsx','utf8'),/\b(buy|sell|price target|probability)\b/i);
  assert.equal(B.keyFact({brief:{evidence:[]},price:{status:'unavailable'}}),null,'no figure means no figure, never a guess');
 });

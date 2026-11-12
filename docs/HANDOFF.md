@@ -282,3 +282,13 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 - Plain labels for v2 screen results only: INVESTIGATE → "Strong case", MONITOR → "Watch", WAIT → "Not enough data" (`friendlyLabel`, exact match). v1 labels are unchanged ("Data ready (v1 label)"), so a v1 data-completeness pass never shows as a strong case.
 - No data, schema or rule changes. Verified: `node --test tests/*.test.mjs` 90/90, `tsc --noEmit` clean, `pnpm build` OK. UI not checked in a browser. Look at it on the Site after publishing.
 - Next: Batch 2 (evidence score 0–100, needs an AGENTS invariant 6 amendment with the founder's approval), Batch 3 (Practice rebuild), Batch 4 (Discover ranking + Following thesis monitor).
+
+## 2026-11-12 — Claude Code: evidence score 0–100 (Batch 2 of 4)
+
+- New `lib/sentinel/evidence-score.ts` (`evidence-score-v1`). Eight checks, fixed points summing to 100: material event (15), company named directly (15), P/E 0–30 (15), latest quarter revenue up year on year from SEC quarterly figures (15), annual revenue up (10), profitable (10), positive operating cash flow (10), fresh SEC data (10). Unknown = 0 points and shown as unknown; under 60 known points there is no score ("Not enough data to score"). Bands: 70+ strong, 40–69 mixed, under 40 weak.
+- Founder approved the score on 2026-11-12; AGENTS invariant 6 is amended with the limits (checklist only, never a probability, versioned, judged by outcomes per band).
+- `discovery-case.ts` stores `evidenceScore` and `quarterlyRevenue` on new cases. Older cases are recomputed at read time from stored fields with the quarterly check unknown, so most will show "Not enough data to score" or a lower score until new cases arrive.
+- Brief: takes and watch items sorted by score; bottom line says "(evidence N/100)"; take cards show the badge and what is holding the score back; the case sheet shows the full checklist with sources. `morning-brief-v2`.
+- The morning-brief test that banned the word "score" now bans buy/sell/hold/price target/probability/confidence and requires every score to come from `evidence-score-v1`.
+- The weights are a hypothesis set before looking at outcomes. Not yet done: track record per score band (needs outcomes; planned with Practice in Batch 3).
+- Verified: tests (see PR), tsc, build. Not checked in a browser.

@@ -4,11 +4,12 @@ import { ArrowRight, ChevronDown, ExternalLink, CircleHelp, Radar, LayoutGrid } 
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { friendlyLabel, screenLabel } from "@/lib/sentinel/screen-label";
+import { caseEvidenceScore, SCORE_MEANING } from "@/lib/sentinel/evidence-score";
 
 /* Morning brief dashboard: bottom line first, takes, radar, watchlist; everything else folded. */
 
 type Fact = { label: string; value: string; source: string } | null;
-type Take = { caseId: string; symbol: string; company: string | null; label: string; statement: string; url: string | null; source: string | null; publishedAt: string | null; assessedAt: string; whyItMatters: string | null; checkFirst: string | null; keyFact: Fact; reason?: string };
+type Take = { caseId: string; symbol: string; company: string | null; label: string; statement: string; url: string | null; source: string | null; publishedAt: string | null; assessedAt: string; whyItMatters: string | null; checkFirst: string | null; keyFact: Fact; reason?: string; evidence?: { score: number | null; band: string | null; status: string; coverage: number; passed: string[]; failed: string[]; unknown: string[] } };
 
 const london = (iso: string | null | undefined, opts: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit" }) =>
   iso && Number.isFinite(Date.parse(iso)) ? new Date(iso).toLocaleString("en-GB", { timeZone: "Europe/London", ...opts }) : "unknown";
@@ -30,15 +31,32 @@ function KeyFact({ f }: { f: Fact }) {
   return f ? <p className="text-xs leading-relaxed text-muted-foreground"><span className="font-semibold tabular-nums text-foreground">{f.label} {f.value}</span> · {f.source}</p> : <p className="text-xs text-muted-foreground"><span className="rounded bg-muted px-1.5 py-0.5">Unknown</span> No sourced figure available</p>;
 }
 
+const BAND_STYLE: Record<string, string> = { "Strong evidence": "text-sky-300", "Mixed evidence": "text-amber-300", "Weak evidence": "text-slate-300" };
+/** Evidence score badge. Never blank: an unscored case says so. Not a probability. */
+function ScoreBadge({ e, size = "md" }: { e?: Take["evidence"]; size?: "md" | "sm" }) {
+  if (!e) return null;
+  if (e.score === null) return <span title={SCORE_MEANING} className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">Not enough data to score</span>;
+  return (
+    <span title={SCORE_MEANING} className="inline-flex items-baseline gap-1.5 rounded-md border border-border bg-background/40 px-2 py-1">
+      <span className={`font-semibold tabular-nums ${size === "md" ? "text-2xl" : "text-base"} ${BAND_STYLE[e.band ?? ""] ?? ""}`}>{e.score}</span>
+      <span className="text-xs text-muted-foreground">/100 · {e.band}</span>
+    </span>
+  );
+}
+
 function TakeCard({ t, onOpen }: { t: Take; onOpen: () => void }) {
   return (
     <article className="rounded-xl border border-border bg-card p-6">
-      <h3 className="text-lg font-semibold leading-snug">{t.statement}</h3>
+      <div className="flex items-start justify-between gap-4">
+        <h3 className="text-lg font-semibold leading-snug">{t.statement}</h3>
+        <ScoreBadge e={t.evidence} />
+      </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
         <Chip label={t.label} /><span className="font-semibold text-foreground">{t.symbol}</span><span>{t.company ?? "Company unverified"}</span><span>· {t.source ?? "Unknown source"} · {dayTime(t.publishedAt)}</span>
       </div>
       <dl className="mt-4 space-y-2 text-[15px] leading-relaxed">
         <div><dt className="inline font-medium">Why it may matter: </dt><dd className="inline text-muted-foreground">{t.whyItMatters ?? "No rule template for this event type; read the original report."}</dd></div>
+        {t.evidence && (t.evidence.failed.length > 0 || t.evidence.unknown.length > 0) && <div><dt className="inline font-medium">Holding the score back: </dt><dd className="inline text-muted-foreground">{[...t.evidence.failed.map(x => x + " (no)"), ...t.evidence.unknown.map(x => x + " (unknown)")].join(" · ")}</dd></div>}
         <div><dt className="inline font-medium">Check before acting: </dt><dd className="inline text-muted-foreground">{t.checkFirst}</dd></div>
       </dl>
       <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-border pt-4">
@@ -46,6 +64,20 @@ function TakeCard({ t, onOpen }: { t: Take; onOpen: () => void }) {
         <button onClick={onOpen} className="inline-flex items-center gap-1 text-sm font-medium text-sky-300 hover:underline">Open full case <ArrowRight size={14} /></button>
       </div>
     </article>
+  );
+}
+
+function ScoreChecklist({ c }: { c: any }) {
+  const e = caseEvidenceScore(c);
+  const mark = { pass: ["✓", "text-sky-300"], fail: ["✕", "text-amber-300"], unknown: ["?", "text-muted-foreground"] } as const;
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between"><h4 className="font-semibold">Evidence score</h4>
+        {e.score === null ? <span className="rounded bg-muted px-1.5 py-0.5 text-xs">Not enough data to score</span> : <span className="tabular-nums"><span className="text-lg font-semibold">{e.score}</span><span className="text-xs text-muted-foreground">/100 · {e.band}</span></span>}
+      </div>
+      <ul className="space-y-1.5">{e.checks.map(x => <li key={x.id} className="flex gap-2"><span className={mark[x.state][1]}>{mark[x.state][0]}</span><span className="flex-1"><span className="font-medium">{x.label}</span> <span className="text-xs text-muted-foreground">({x.points} pts)</span><div className="text-xs text-muted-foreground">{x.detail}{x.source ? ` · ${x.source}` : ""}</div></span></li>)}</ul>
+      <p className="mt-2 text-xs text-muted-foreground">{e.meaning} Checks known: {e.coverage}/100 points{e.score === null ? " (at least 60 needed to score)" : ""}. Rules {e.version}; weights are untested and will be judged by outcomes per score band.</p>
+    </div>
   );
 }
 
@@ -61,6 +93,7 @@ function CaseSheet({ c, onClose }: { c: any | null; onClose: () => void }) {
           </SheetHeader>
           <div className="space-y-6 px-4 pb-8 text-sm">
             <p className="text-muted-foreground">{c.event?.source ?? "Unknown source"} · published {dayTime(c.event?.publishedAt)} · assessed {dayTime(c.createdAt)}{c.event?.url && <> · <a className="inline-flex items-center gap-1 text-sky-300 hover:underline" href={c.event.url} target="_blank" rel="noreferrer">original <ExternalLink size={12} /></a></>}</p>
+            <ScoreChecklist c={c} />
             <div><h4 className="mb-2 font-semibold">Screening rules</h4>
               {c.rules?.length ? <ul className="space-y-1.5">{c.rules.map((r: any) => <li key={r.id} className="flex gap-2"><span className={r.passed ? "text-sky-300" : "text-amber-300"}>{r.passed ? "✓" : "✕"}</span><span><span className="font-medium">{r.id}</span> {r.detail}{r.passed ? "" : " — not met"}</span></li>)}</ul> : <p className="text-muted-foreground">Rules were not evaluated (earlier screen version or data incomplete).</p>}
             </div>
@@ -129,7 +162,7 @@ export function MorningBriefView({ embedded = false }: { embedded?: boolean }) {
                 <div id="radar" />
                 {data.radar.length ? <ul className="-mx-2 divide-y divide-border">{data.radar.map((r: Take) => (
                   <li key={r.caseId}><button onClick={() => setOpen(r.caseId)} className="w-full rounded-md px-2 py-3 text-left hover:bg-accent">
-                    <div className="flex items-start gap-2"><Chip label={r.label} /><span className="text-sm"><span className="font-semibold">{r.symbol}</span> {r.statement}</span></div>
+                    <div className="flex items-start gap-2"><Chip label={r.label} /><span className="flex-1 text-sm"><span className="font-semibold">{r.symbol}</span> {r.statement}</span><ScoreBadge e={r.evidence} size="sm" /></div>
                     <p className="mt-1 text-xs text-muted-foreground">{r.reason}</p>
                   </button></li>))}</ul> : <p className="text-sm text-muted-foreground">Nothing with complete data missed by a single rule.</p>}
                 {data.moreRadar > 0 && <p className="mt-2 text-xs text-muted-foreground">+{data.moreRadar} more</p>}
