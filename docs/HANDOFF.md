@@ -180,3 +180,17 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Could NOT verify, and why:** Browser rendering, scheduled operation and production behavior were not exercised; no deployment was performed.
 
 **Next action:** Review the PR and experimental rules before merge or any deployment.
+
+## 2026-11-12 — Codex — relevance matching and analyst queue ordering
+
+**Worked on:** Improved headline-only company relevance and discovery assessment routing for new cases on PR #14.
+
+**Verified by running:** `node --test tests/*.test.mjs`: 64 passed before and 66 passed after, zero failures. `pnpm build` succeeded. Focused relevance and D1-backed queue tests passed, including the reserved oldest slot.
+
+**Changed:** `lib/sentinel/news-assessment.ts` and `tests/news-assessment.test.mjs` add `headline-relevance-v2`, cleaned names, restricted first-word aliases, direct-action and possessive matching, and negative fixtures. `lib/sentinel/discovery-case.ts` and `tests/work-order03.test.mjs` place analyst-only candidates behind other topics on normal slots; every third slot remains oldest-first. Existing stored relevance and cases are not rewritten.
+
+**Open / broken:** Headline matching and aliases remain heuristics, not verified entity or event resolution. Research screen rules remain unvalidated and old and new WAIT definitions differ. Queue and outcome throughput limitations remain.
+
+**Could NOT verify, and why:** Production matching, scheduled processing, real-provider coverage and browser rendering were not exercised; no deployment was performed.
+
+**Next action:** Review PR #14 and the experimental rules before merging or deploying.
