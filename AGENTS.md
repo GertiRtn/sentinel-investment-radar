@@ -38,6 +38,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
 - Discovery: Alpaca market news (`lib/sentinel/discovery-collector.ts`), up to 5×50 items per run, checkpointed.
 - Cases: `lib/sentinel/discovery-case.ts`, up to 6 per run with a 35 s budget, one slot in three oldest-first. Only `topic match` candidates are assessed.
+- Security identity (`lib/sentinel/security-identity.ts`, `security-identity-v2` since 2026-11-12): active US equity + exact symbol + one SEC ticker + no other-instrument words in the name (ADR/ADS, units, warrants, rights, preferred, funds, trusts, ETFs, notes, named share classes). v1 also required the words "Common Stock", which rejected most NYSE names. Stored cases keep their v1 result.
 - Screen: `researchDecision()` in `lib/sentinel/price-assessment.ts` (`research-screen-v1`).
 - Indicative P/E from an IEX midpoint and reported annual diluted EPS; cash-flow scenarios (fixed 12% discount, ±5% growth, 5 years).
 - Outcomes: `lib/sentinel/outcome-collector.ts`, 5/20/60/120 matched trading days vs SPY, gross, up to 8 per run.
