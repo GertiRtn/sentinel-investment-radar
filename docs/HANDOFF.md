@@ -338,3 +338,5 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 - Tests: the horizon test's mocks now allow one request per symbol (previously four). It asserts `requests.bars === 2`, which is a stricter check, and every outcome assertion is unchanged.
 - **Discover:** each ranked row has "Open case & research team", which opens the same case sheet as the Brief (`CaseSheet` exported from `components/sentinel/morning-brief.tsx`). That makes the Research team panel reachable from Discover.
 - Verified: full test suite, tsc, build (counts in the PR). Not verified: production D1 load after the change, and the browser UI.
+
+- 2026-11-12 20:26 UTC: the founder reports the Alpaca paper keys were regenerated and the two Site secrets (`ALPACA_DATA_KEY_ID`, `ALPACA_DATA_SECRET`) replaced. The old pair is invalid. Not independently verified from this session: confirm prices load on the Site.
