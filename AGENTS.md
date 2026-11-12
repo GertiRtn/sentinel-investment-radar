@@ -53,8 +53,8 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ## Known issues (from the 2026-11-12 audit; fix deliberately, not in passing)
 
-1. `INVESTIGATE` from `research-screen-v1` is a data-completeness gate (company named + P/E computable + recent revenue). The P/E value, valuation, price move and news direction do not affect it. INVESTIGATE-vs-WAIT outcomes are therefore confounded with data quality.
-2. `INVESTIGATE` is also hard-coded on every raw discovery candidate (`discovery.ts`) and every watchlist news case (`app/mcp/route.ts`), giving one label three meanings.
+1. Fixed by research-screen-v2 on 2026-11-12 for new cases; historical `INVESTIGATE` from `research-screen-v1` is a data-completeness gate (company named + P/E computable + recent revenue). The P/E value, valuation, price move and news direction do not affect it. INVESTIGATE-vs-WAIT outcomes are therefore confounded with data quality.
+2. Fixed by research-screen-v2 on 2026-11-12 for new records; previously `INVESTIGATE` was hard-coded on every raw discovery candidate (`discovery.ts`) and every watchlist news case (`app/mcp/route.ts`), giving one label three meanings.
 3. The outcome horizon is 5 trading days only; it needs longer horizons (e.g. 20/60/120) as separate records.
 4. Outcome capacity is one per run (max 24/day) against up to 144 cases/day: the backlog grows without bound.
 5. Capacity: ~250 headlines collected vs ≤6 assessed per run; the whole pipeline in one request is the likely cause of partial scans.

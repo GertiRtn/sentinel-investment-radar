@@ -10,6 +10,17 @@ export function priceAssessment(input:{figures:Figure[];quote:any;security:any;a
  const price=(quote.bid+quote.ask)/2,ratio=price/eps.value!;if(!Number.isFinite(ratio))return no('The ratio cannot be calculated.');
  return {status:'indicative' as const,price,eps:eps.value,ratio,periodEnd:eps.period_end,periodStart:f.period_start,filed:f.filed,accession:f.accession,epsRawId:f.raw_event_id,quoteRawId:quote.rawEventId,assetRawId:security.rawEventId,quoteTime:quote.sourceTime,limitations:'Price is an IEX midpoint, not an executable or consolidated market price. This compares a current quote with the last reported annual diluted EPS, not trailing twelve months or forward earnings. The security and EPS share basis and later splits require independent verification. A low P/E is not evidence that a stock is undervalued.'};
 }
+export function dataReadiness(input:{price:any;brief:any;asOf:string}){
+ const blockers:string[]=[];if(input.price?.status!=='indicative')blockers.push('An eligible price-to-reported-earnings measure is unavailable.');const revenue=input.brief?.evidence?.find((x:any)=>x.label==='Revenue'&&x.value!==null),age=revenue?.periodEnd?Date.parse(input.asOf)-Date.parse(revenue.periodEnd+'T23:59:59.999Z'):NaN;if(input.brief?.stale!==false||!Number.isFinite(age)||age<0||age>550*86400000||!revenue?.rawEventId)blockers.push('Recent sourced revenue evidence is incomplete.');
+ return {status:blockers.length?'DATA_INCOMPLETE' as const:'DATA_READY' as const,blockers,version:'data-readiness-v1' as const};
+}
+// Untested hypothesis chosen before examining outcomes.
+export const SCREEN_V2_RULES={topics:['Earnings or financial results','Regulation or legal matter','Acquisition or transaction'],maxPE:30} as const;
+export function researchDecisionV2(input:{identity:any;price:any;brief:any;asOf:string;topics?:string[]}){
+ const readiness=dataReadiness(input),ratio=input.price?.ratio;
+ const rules=[{id:'R1',passed:SCREEN_V2_RULES.topics.some(t=>input.topics?.includes(t)),detail:'Material event topic'}, {id:'R2',passed:input.identity?.relevance?.level==='direct_candidate',detail:'Direct company role'}, {id:'R3',passed:typeof ratio==='number'&&Number.isFinite(ratio)&&ratio>0&&ratio<=SCREEN_V2_RULES.maxPE,detail:'Indicative P/E above 0 and at most 30'}];
+ const failed=rules.filter(r=>!r.passed);return {conclusion:readiness.status==='DATA_INCOMPLETE'?'WAIT':failed.length?'MONITOR':'INVESTIGATE',reason:readiness.blockers.length?readiness.blockers.join(' '):failed.length?'Failed rules: '+failed.map(r=>r.id+' '+r.detail).join('; '):'All research screening rules met; further verification required.',version:'research-screen-v2' as const,readiness,rules};
+}
 export function researchDecision(input:{identity:any;price:any;brief:any;valuation:any;asOf:string}){
  const blockers:string[]=[];if(input.identity?.relevance?.level!=='direct_candidate')blockers.push('The company’s role in the headline is unclear.');if(input.price?.status!=='indicative')blockers.push('An eligible price-to-reported-earnings measure is unavailable.');const revenue=input.brief?.evidence?.find((x:any)=>x.label==='Revenue'&&x.value!==null),age=revenue?.periodEnd?Date.parse(input.asOf)-Date.parse(revenue.periodEnd+'T23:59:59.999Z'):NaN;if(input.brief?.stale!==false||!Number.isFinite(age)||age<0||age>550*86400000||!revenue?.rawEventId)blockers.push('Recent sourced revenue evidence is incomplete.');
  if(blockers.length)return {conclusion:'WAIT',reason:'Required research inputs are missing or ambiguous.',blockers,version:'research-screen-v1'};

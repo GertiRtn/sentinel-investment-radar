@@ -3,18 +3,22 @@ export type NewsAssessment={headlineId:string;topics:string[];whyReview:string[]
 export type CompanyRelevance={level:'direct_candidate'|'review';role:string;evidence:string|null;reason:string;version:string};
 /** Headline-only routing. This is not entity resolution, fact verification or a materiality model. */
 export function assessCompanyRelevance(headline:string,company:string):CompanyRelevance{
- const name=company.replace(/\s+(inc\.?|corp\.?|corporation|ltd\.?|plc)$/i,'').trim();
- const result=(level:CompanyRelevance['level'],role:string,evidence:string|null,reason:string):CompanyRelevance=>({level,role,evidence,reason,version:'headline-relevance-v1'});
+ const words=company.replace(/\/de\//gi,' ').replace(/\b([ns])\s*\.\s*([av])\s*\./gi,'$1$2').replace(/[^\p{L}\p{N}]+/gu,' ').trim().split(/\s+/);
+ const suffixes=new Set(['inc','corp','corporation','co','company','ltd','limited','plc','holdings','holding','group','nv','sa','ag','se']);
+ while(words.length && suffixes.has(words[words.length-1].toLowerCase()))words.pop();
+ const name=words.join(' ');
+ const result=(level:CompanyRelevance['level'],role:string,evidence:string|null,reason:string):CompanyRelevance=>({level,role,evidence,reason,version:'headline-relevance-v2'});
  if(name.length<3)return result('review','unknown',null,'Company name is too ambiguous for automatic routing.');
- const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
- const match=new RegExp('\\b'+escaped+'\\b','i').exec(headline);
+ const common=new Set(['american','general','united','first','national','international','global','digital','energy','capital']);
+ const alias=words[0];const names=[name,...(alias.length>=4 && !common.has(alias.toLowerCase()) && alias!==name?[alias]:[])];
+ const match=names.map(n=>new RegExp('\\b'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s+')+'\\b','i').exec(headline)).find(Boolean);
  if(!match)return result('review','unknown',null,'The company is not named in the headline; the provider ticker tag alone is insufficient.');
  const before=headline.slice(0,match.index),after=headline.slice(match.index+match[0].length);
  if(/\b(stores?|shop|customers?|devices?|users?)\b/i.test(after.slice(0,28)) && before.trim())return result('review','mentioned platform or distribution channel',match[0],'The company may be a distribution channel or context; its material exposure is unverified.');
- const directVerb='(?:reports?|reported|announces?|announced|raises?|raised|cuts?|cut|launches?|launched|acquires?|acquired|faces?|faced|sues?|sued|settles?|settled|beats?|misses?|plans?|recalls?|warns?|warned|files?|filed|wins?|loses?|partners?|is|was|to)';
+ const directVerb='(?:reports?|reported|announces?|announced|raises?|raised|cuts?|cut|launches?|launched|acquires?|acquired|faces?|faced|sues?|sued|settles?|settled|beats?|misses?|plans?|recalls?|warns?|warned|files?|filed|wins?|loses?|partners?|is|was|to|reaffirms|affirms|reiterates|guides|posts|completes|signs|enters|receives|secures|agrees|prices|declares|appoints|expands|unveils|delivers|issues|narrows|lowers|boosts|tops|updates)';
  const directAfter=new RegExp('^\\s+(?:'+directVerb+')\\b','i');
  const affectedBefore=/\b(?:fines?|fined|sues?|sued|investigates?|investigated|charges?|charged|acquires?|acquired|targets?|targeted|orders?|ordered)\s+$/i;
- if(directAfter.test(after)||affectedBefore.test(before))return result('direct_candidate',affectedBefore.test(before)?'possible affected party':'possible event subject',match[0],'Headline wording suggests a direct company role; verify the original report and its materiality.');
+ if(directAfter.test(after)||affectedBefore.test(before)||(/^[’']s\b/i.test(after)&&!before.trim()))return result('direct_candidate',affectedBefore.test(before)?'possible affected party':'possible event subject',match[0],'Headline wording suggests a direct company role; verify the original report and its materiality.');
  return result('review','mentioned company',match[0],'The company is mentioned, but its role and exposure are unclear from the headline.');
 }
 /** Conservative keyword routing for research questions, not a fact check or prediction. */

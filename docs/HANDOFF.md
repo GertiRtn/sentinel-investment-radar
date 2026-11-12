@@ -166,6 +166,35 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 
 **Next action:** founder merges this PR. Then: rotate Alpaca keys; split the INVESTIGATE label and pre-register a real screening rule; add 20/60/120-day outcomes with batched fetching; decide hosting (stay on Sites vs own Cloudflare, which needs auth replaced first).
 
+
+## 2026-11-12 — Codex — screen v2 readiness and research rules
+
+**Worked on:** Split data readiness from event, relevance and P/E research rules; route new cases and label historic records.
+
+**Verified by running:** Baseline 61 passing; updated suite 64 passing, zero failures. `pnpm build` succeeded. TypeScript check passed before the final UI grouping change; the build passed with that change.
+
+**Changed:** Price assessment, discovery collection and cases, watchlist news, discovery API and UI, dashboard mapping and tests. Outcome records are displayed by screen version and conclusion; historic records remain unchanged.
+
+**Open / broken:** Rules are unvalidated. v1 WAIT and v2 WAIT are not equivalent: v2 readiness excludes direct-role matching. Outcome coverage and throughput remain limited.
+
+**Could NOT verify, and why:** Browser rendering, scheduled operation and production behavior were not exercised; no deployment was performed.
+
+**Next action:** Review the PR and experimental rules before merge or any deployment.
+
+## 2026-11-12 — Codex — relevance matching and analyst queue ordering
+
+**Worked on:** Improved headline-only company relevance and discovery assessment routing for new cases on PR #14.
+
+**Verified by running:** `node --test tests/*.test.mjs`: 64 passed before and 66 passed after, zero failures. `pnpm build` succeeded. Focused relevance and D1-backed queue tests passed, including the reserved oldest slot.
+
+**Changed:** `lib/sentinel/news-assessment.ts` and `tests/news-assessment.test.mjs` add `headline-relevance-v2`, cleaned names, restricted first-word aliases, direct-action and possessive matching, and negative fixtures. `lib/sentinel/discovery-case.ts` and `tests/work-order03.test.mjs` place analyst-only candidates behind other topics on normal slots; every third slot remains oldest-first. Existing stored relevance and cases are not rewritten.
+
+**Open / broken:** Headline matching and aliases remain heuristics, not verified entity or event resolution. Research screen rules remain unvalidated and old and new WAIT definitions differ. Queue and outcome throughput limitations remain.
+
+**Could NOT verify, and why:** Production matching, scheduled processing, real-provider coverage and browser rendering were not exercised; no deployment was performed.
+
+**Next action:** Review PR #14 and the experimental rules before merging or deploying.
+
 ---
 
 ## 2026-11-12 — Claude (Claude Code) — CI, replay recompute, alert provenance
