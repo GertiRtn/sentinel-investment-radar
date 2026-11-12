@@ -41,7 +41,8 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - Screen: `researchDecision()` in `lib/sentinel/price-assessment.ts` (`research-screen-v1`).
 - Indicative P/E from an IEX midpoint and reported annual diluted EPS; cash-flow scenarios (fixed 12% discount, ±5% growth, 5 years).
 - Outcomes: `lib/sentinel/outcome-collector.ts`, 5/20/60/120 matched trading days vs SPY, gross, up to 8 per run.
-- Journal, thesis memos, kill criteria, practice portfolio.
+- Journal, thesis memos, kill criteria.
+- Practice v2 (`lib/sentinel/practice.ts`, `app/api/practice/route.ts`, `components/sentinel/practice.tsx`): $10,000 virtual; open/close priced by the server from a recorded IEX midpoint (never typed), SPY recorded at every trade as the position's benchmark; thesis, exit plan, kill condition and the user's own conviction 0–100 required; review prompts at 1 week / 1 month / 3 months; scorecard by evidence band and conviction band (median only from 5 trades); one `practice_mark` per UTC day from the hourly run. Gross returns. The old $50 manual ledger (`paper_trade`) is kept read-and-write under a fold.
 - Navigation (2026-11-12): main tabs Brief (home) / Discover / Following / Practice; the rest under a Library menu. Old tab names map via `TAB_ALIAS` in `app/page.tsx`.
 - Evidence score 0–100 (`evidence-score-v1`, see invariant 6): stored on every new discovery case with the quarterly revenue comparison it used; older cases are recomputed from their stored fields with the quarter unknown. The brief ranks strong cases and watch items by it.
 - Morning brief (`/brief`, `GET /api/morning-brief`, builder `lib/sentinel/morning-brief.ts`): executive summary of the last 24 h, bottom line first. Every sentence is assembled from stored records and rule templates (no model text, no estimated numbers); only `research-screen-v2` cases become takes or radar.

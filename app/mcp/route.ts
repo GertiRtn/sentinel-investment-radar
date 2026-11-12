@@ -5,6 +5,7 @@ import {collectCompanyNews} from '@/app/api/company-news/route';
 import {assessNews,assessCompanyRelevance} from '@/lib/sentinel/news-assessment';
 import {observeOutcomes} from '@/lib/sentinel/outcome-collector';
 import {assessDiscoveryBatch} from '@/lib/sentinel/discovery-case';
+import {markPractice} from '@/app/api/practice/route';
 import {collectDiscovery} from '@/lib/sentinel/discovery-collector';
 import {buildBrief} from '@/lib/sentinel/brief-builder';
 
@@ -35,5 +36,5 @@ export async function POST(request:Request){
   try{const result=await ingest(entity.cik,email);results.push({company:entity.name,status:'success',checked_at:new Date().toISOString(),observations_processed:result.observations,new_filings:result.newFilings});}
   catch(e){results.push({company:entity.name,status:'failed',checked_at:new Date().toISOString(),message:e instanceof Error?e.message:'Update failed'});}
  }
- const news=await checkNews();let discovery;try{discovery=await collectDiscovery(ownerId)}catch(e){discovery={status:'failed',message:e instanceof Error?e.message:'Market discovery failed'};}let discoveryAssessment;try{discoveryAssessment=await assessDiscoveryBatch(ownerId,email)}catch(e){discoveryAssessment={status:'failed',message:e instanceof Error?e.message:'Assessment failed'};}let outcomeObservation;try{outcomeObservation=await observeOutcomes(ownerId)}catch(e){outcomeObservation={status:'failed',message:e instanceof Error?e.message:'Outcome observation failed'};}return reply({content:[{type:'text',text:JSON.stringify({results,checked:results.length,news,discovery,discoveryAssessment,outcomeObservation,note:'SEC responses can be cached for up to 24 hours. News reports may be delayed. Failures retain stored records. This tool does not evaluate trades.'})}],isError:results.some(r=>r.status==='failed')});
+ const news=await checkNews();let discovery;try{discovery=await collectDiscovery(ownerId)}catch(e){discovery={status:'failed',message:e instanceof Error?e.message:'Market discovery failed'};}let discoveryAssessment;try{discoveryAssessment=await assessDiscoveryBatch(ownerId,email)}catch(e){discoveryAssessment={status:'failed',message:e instanceof Error?e.message:'Assessment failed'};}let outcomeObservation;try{outcomeObservation=await observeOutcomes(ownerId)}catch(e){outcomeObservation={status:'failed',message:e instanceof Error?e.message:'Outcome observation failed'};}let practiceMark;try{practiceMark=await markPractice(ownerId)}catch(e){practiceMark={status:'failed',message:e instanceof Error?e.message:'Practice mark failed'};}return reply({content:[{type:'text',text:JSON.stringify({results,checked:results.length,news,discovery,discoveryAssessment,outcomeObservation,practiceMark,note:'SEC responses can be cached for up to 24 hours. News reports may be delayed. Failures retain stored records. This tool does not evaluate trades.'})}],isError:results.some(r=>r.status==='failed')});
 }

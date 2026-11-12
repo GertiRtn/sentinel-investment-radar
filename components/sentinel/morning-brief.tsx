@@ -110,6 +110,7 @@ function CaseSheet({ c, onClose }: { c: any | null; onClose: () => void }) {
             <div><h4 className="mb-2 font-semibold">What to verify next</h4>
               <ul className="list-disc space-y-1 pl-5 text-muted-foreground">{[...(c.event?.analysis?.questions ?? []), ...(c.missing ?? [])].slice(0, 8).map((q: string, i: number) => <li key={i}>{q}</li>)}</ul>
             </div>
+            {c.id && c.symbol && <a href={`/#practice?case=${encodeURIComponent(c.id)}&symbol=${encodeURIComponent(c.symbol)}`} onClick={onClose} className="inline-flex w-full items-center justify-center rounded-md bg-[#cbf47b] px-3 py-2 text-sm font-semibold text-black">Practice-trade this with virtual money</a>}
             <p className="text-xs text-muted-foreground">Research record, not investment advice.</p>
           </div>
         </>}

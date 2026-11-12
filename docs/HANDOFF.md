@@ -292,3 +292,14 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 - The morning-brief test that banned the word "score" now bans buy/sell/hold/price target/probability/confidence and requires every score to come from `evidence-score-v1`.
 - The weights are a hypothesis set before looking at outcomes. Not yet done: track record per score band (needs outcomes; planned with Practice in Batch 3).
 - Verified: tests (see PR), tsc, build. Not checked in a browser.
+
+## 2026-11-12 — Claude Code: Practice v2 (Batch 3 of 4)
+
+- Practice is now $10,000 of virtual money with live prices. The server prices every open and close from a recorded IEX quote midpoint. The quote's raw-event id and time are stored, and a price typed in the request is rejected. SPY is recorded at each trade, so every position has its own benchmark: the same dollars in SPY at the same moments.
+- Opening requires a thesis, an exit plan, what would prove it wrong, and the founder's own conviction 0–100 (his number, recorded before the outcome, so it fits invariant 5). Opening from a case ("Practice-trade this" in the brief's case sheet, link `/#practice?case=…&symbol=…`) copies the case's evidence score from the stored record, not from the client.
+- Live: the Practice tab refreshes every 60 s while visible. The quote cache is 60 s and up to 12 open symbols are priced. A missing price shows "unknown" and the portfolio value becomes unknown, never guessed.
+- History: `markPractice` in the hourly MCP run appends one `practice_mark` per UTC day (skipped when a position cannot be priced). The chart starts after the first mark.
+- Reviews at 1 week / 1 month / 3 months ("Still holding" / "Thesis broken — close") are stored as `practice_review`. Scorecard by evidence band and by conviction band: count and beat-SPY count; median gap only from 5 trades per band.
+- All records are append-only signal_log kinds (`practice_trade`, `practice_review`, `practice_mark`); conditional append on the trade count, as with the old ledger. The old $50 ledger stays under a fold.
+- Gross returns: no fees, taxes or slippage, and the page says so. Closed-market quotes are allowed (up to 5 days old, spread ≤ 2%) and labelled with their time.
+- Verified: unit tests (`tests/practice.test.mjs`), a Miniflare API test with mocked IEX quotes in work-order03, tsc, build. Not verified against real Alpaca or in a browser.
