@@ -374,3 +374,18 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Not verified:** the browser rendering of the new section; real Alpaca bar responses for a real case (mocked only).
 
 **Separate follow-ups (not done, by instruction):** discovery capacity (6 per run vs 1,621 queued); queue order and batch limits are unchanged.
+
+## 2026-11-12 (late night) — Claude Code: Practice risk check prototype (founder roadmap: portfolio risk and Monte Carlo)
+
+Started only after the "What changed?" PR (#27) was complete, tested and opened. This branch (`practice-risk`) is built on #27, so merge #27 first.
+
+- **Data checked first:** Practice positions are live-marked from IEX quotes (`practiceSnapshot`). No daily history was stored per symbol, so the case-sheet bar fetch was moved into a shared helper, `lib/sentinel/daily-bars.ts`: on demand, archived append-only in `raw_event` (source `alpaca:iex:daily-bars:*`; renamed from `case-bars`, which was never deployed), reused for 6 h. The live Site has no open practice positions yet, so on real data the check will show "No open Practice positions" until a trade exists.
+- **`lib/sentinel/practice-risk.ts` (pure):**
+  - Concentration: weights incl. cash, largest position, effective number of positions, and a flag above 25%. An unpriced position blocks it.
+  - Coverage: closes per symbol and shared trading days; at least 120 needed.
+  - Simulation: a historical bootstrap of whole shared days, which keeps co-movement with no normality assumption. 10,000 paths, a 20-session horizon, a 252-day lookback, the mulberry32 seed 20261112, cash at 0%, holdings held unchanged.
+  - Outputs: VaR and ES at 95%, percentiles, annualised volatility, a correlation matrix, and stresses (−10% / −20% on all positions, and the worst actual 20-session stretch replayed).
+  - Assumptions and limits are listed in the output. Anything insufficient shows `unavailable`.
+- **`GET /api/practice-risk`:** owner-scoped and read-only (no record written, no trade). `components/sentinel/practice-risk.tsx` adds a "Run risk check" button in the Practice tab.
+- **Verified:** 152/152 tests. New: `tests/practice-risk.test.mjs` (7 tests: reproducibility, an exact constant-return case, ES ≥ VaR, cash dilution, correlation, concentration maths, missing/short/unshared history, extreme inputs). One Miniflare test covers an empty portfolio, the ok path with mocked bars, reproducibility with archive reuse, and an unchanged Practice record count and trades. `tsc` clean, build OK. Not verified: a browser view, real Alpaca history for real positions, or Worker CPU time with 12 positions (estimated 2.4M multiplications per run).
+- **Known limits / next:** independent day draws ignore volatility clustering (a block bootstrap is next); no SPY beta yet; gross of costs; a fixed horizon.

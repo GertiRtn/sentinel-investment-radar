@@ -98,7 +98,7 @@ export function whatChanged(pack: EvidencePack, kase: any) {
 // ---- price context ---------------------------------------------------------
 
 export type Bar = { t: string; c: number };
-const nyDate = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+export const nyDate = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
 /** UTC instant of 16:00 New York time on a session date (handles daylight saving). */
 export function closeInstant(date: string): string {
   const guess = Date.parse(date + 'T21:00:00Z'); // 16:00 EST
