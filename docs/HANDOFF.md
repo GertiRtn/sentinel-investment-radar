@@ -165,3 +165,18 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Could NOT verify, and why:** whether v36 is exactly what is live (the brief cites "Library version 69", which may be a different counter); whether the hourly ChatGPT scheduled task is still running; production queue size and outcome counts; whether the exposed Alpaca paper keys were rotated. None of these are reachable from the repository.
 
 **Next action:** founder merges this PR. Then: rotate Alpaca keys; split the INVESTIGATE label and pre-register a real screening rule; add 20/60/120-day outcomes with batched fetching; decide hosting (stay on Sites vs own Cloudflare, which needs auth replaced first).
+
+
+## 2026-11-12 — Codex — screen v2 readiness and research rules
+
+**Worked on:** Split data readiness from event, relevance and P/E research rules; route new cases and label historic records.
+
+**Verified by running:** Baseline 61 passing; updated suite 64 passing, zero failures. `pnpm build` succeeded. TypeScript check passed before the final UI grouping change; the build passed with that change.
+
+**Changed:** Price assessment, discovery collection and cases, watchlist news, discovery API and UI, dashboard mapping and tests. Outcome records are displayed by screen version and conclusion; historic records remain unchanged.
+
+**Open / broken:** Rules are unvalidated. v1 WAIT and v2 WAIT are not equivalent: v2 readiness excludes direct-role matching. Outcome coverage and throughput remain limited.
+
+**Could NOT verify, and why:** Browser rendering, scheduled operation and production behavior were not exercised; no deployment was performed.
+
+**Next action:** Review the PR and experimental rules before merge or any deployment.
