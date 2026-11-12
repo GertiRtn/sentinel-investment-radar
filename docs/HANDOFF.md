@@ -238,3 +238,22 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Could NOT verify:** a real call to NVIDIA (no key here, and none should be used in tests); whether the Nano Omni model honours `enable_thinking:false` (handled either way); real latency and the free-tier quota. All are observable after deploy through each reading's `status`, `httpStatus` and `latencyMs`.
 
 **Next action:** founder merges, redeploys the Site, sets `SHADOW_READER_ENABLED=1`. After about a week, download the CSV, label about 100 rows, and compare.
+
+---
+
+## 2026-11-12 — Claude (Claude Code) — outcome horizons 5/20/60/120 and more observations per run
+
+**Worked on:** Known issues 3 and 4. Branch `outcome-horizons` from `main` at c8884cd.
+
+**Verified by running:** `node --test tests/*.test.mjs` → **83/83** (80 before + 3 new). `tsc --noEmit` 0 errors. `pnpm build` OK.
+
+**Changed:**
+- `lib/sentinel/outcome-observation.ts`: `compareForwardBars(…, intervals=5)` (the 5-interval result is unchanged); `OUTCOME_HORIZONS = [5,20,60,120]`; `horizonWaitDays` (5 → 8 days as before; 20 → 29, 60 → 85, 120 → 169).
+- `lib/sentinel/outcome-collector.ts`: picks the oldest case with a due horizon that has no record yet, per horizon. A record without `horizonIntervals`, or an attempt without one, counts as 5, so existing records and cooldowns keep their meaning. The 5-interval record keeps its original id key (no duplicates). New `observeOutcomes(owner, 8, 20000)`; the MCP run uses it instead of one observation per run.
+- `app/api/discovery/route.ts` groups outcomes by screen version · label · horizon; `components/sentinel/discovery.tsx` shows the horizon on every outcome line.
+- Tests: horizon math; an end-to-end old case producing four separate records in one run with no repeats; a short-history case recording 5 and waiting on 20 (with the attempt and cooldown logged, nothing guessed).
+- `AGENTS.md`: known issues 3 and 4 and the current-system line.
+
+**Could NOT verify:** real Alpaca bar coverage over 120 trading days for thinly traded IEX symbols (missing bars give `pending`, never a guess), and real run time on Sites.
+
+**Next action:** founder merges and publishes. Watch `outcomeObservation.counts` in the hourly run output for backlog.
