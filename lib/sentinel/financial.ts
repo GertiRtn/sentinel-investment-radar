@@ -1,18 +1,30 @@
 /** Pure deterministic XBRL selection and derivation. No estimates masquerade as filings. */
 export const TAGS:Record<string,string[]>={
  revenue:['RevenueFromContractWithCustomerExcludingAssessedTax','RevenueFromContractWithCustomerIncludingAssessedTax','Revenues','SalesRevenueNet','SalesRevenueGoodsNet'],
- operating_income:['OperatingIncomeLoss'],net_income:['NetIncomeLoss'],cfo:['NetCashProvidedByUsedInOperatingActivities'],capex:['PaymentsToAcquirePropertyPlantAndEquipment'],depreciation:['DepreciationDepletionAndAmortization','DepreciationAmortizationAndAccretionNet'],cash:['CashAndCashEquivalentsAtCarryingValue'],debt_noncurrent:['LongTermDebtNoncurrent'],debt_current:['LongTermDebtCurrent'],debt_combined:['DebtLongtermAndShorttermCombinedAmount'],equity:['StockholdersEquity'],tax_expense:['IncomeTaxExpenseBenefit'],pretax_income:['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest','IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'],ppe_net:['PropertyPlantAndEquipmentNet'],shares_diluted:['WeightedAverageNumberOfDilutedSharesOutstanding'],cogs:['CostOfRevenue','CostOfGoodsAndServicesSold','CostOfGoodsSold']};
+ eps_diluted:['EarningsPerShareDiluted'],operating_income:['OperatingIncomeLoss'],net_income:['NetIncomeLoss'],cfo:['NetCashProvidedByUsedInOperatingActivities'],capex:['PaymentsToAcquirePropertyPlantAndEquipment'],depreciation:['DepreciationDepletionAndAmortization','DepreciationAmortizationAndAccretionNet'],cash:['CashAndCashEquivalentsAtCarryingValue'],debt_noncurrent:['LongTermDebtNoncurrent'],debt_current:['LongTermDebtCurrent'],debt_combined:['DebtLongtermAndShorttermCombinedAmount'],equity:['StockholdersEquity'],tax_expense:['IncomeTaxExpenseBenefit'],pretax_income:['IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest','IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'],ppe_net:['PropertyPlantAndEquipmentNet'],shares_diluted:['WeightedAverageNumberOfDilutedSharesOutstanding'],cogs:['CostOfRevenue','CostOfGoodsAndServicesSold','CostOfGoodsSold']};
 export type FinancialFact={id:string;entity_id:string;metric:string;source_tag:string;value:number;unit:string;period_start:string;period_end:string;fiscal_year:number|null;fiscal_period:string|null;form:string;known_from:string;filed:string;accession:string;raw_event_id:string;recorded_at:string};
 export type Figure={metric:string;value:number|null;unit:string;period_end:string;known_from:string|null;inputs:FinancialFact[];method:string;confidence:'computed'|'estimated'|'unavailable'|'reported';reason:string};
 export const day=(d:string)=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d));
 export function parseFacts(data:any,entity:string,raw:string,recorded:string):FinancialFact[]{
  const out:FinancialFact[]=[];for(const [metric,tags] of Object.entries(TAGS))for(const tag of tags)for(const [unit,rows] of Object.entries(data?.facts?.['us-gaap']?.[tag]?.units||{})){
- if(unit!==(metric==='shares_diluted'?'shares':'USD')||!Array.isArray(rows))continue;
+ if(unit!==(metric==='shares_diluted'?'shares':metric==='eps_diluted'?'USD/shares':'USD')||!Array.isArray(rows))continue;
  for(const e of rows){if(!day(e.end)||!day(e.filed)||e.start&&!day(e.start)||typeof e.val!=='number'||!Number.isFinite(e.val)||!/^\d{10}-\d{2}-\d{6}$/.test(e.accn)||!['10-K','10-K/A','10-Q','10-Q/A','20-F','20-F/A','40-F','40-F/A'].includes(e.form))continue;
  out.push({id:[entity,tag,unit,e.start||'',e.end,e.accn].join(':'),entity_id:entity,metric,source_tag:tag,value:e.val,unit,period_start:e.start||'',period_end:e.end,fiscal_year:Number.isInteger(e.fy)?e.fy:null,fiscal_period:e.fp||null,form:e.form,known_from:e.filed+'T23:59:59.999Z',filed:e.filed,accession:e.accn,raw_event_id:raw,recorded_at:recorded});
  }}return out;
 }
 export function annual(f:FinancialFact){const days=(Date.parse(f.period_end)-Date.parse(f.period_start))/86400000;return !f.period_start||days>=330&&days<=380;}
+/** Directly reported three-month flows only. Never infer a quarter from YTD figures. */
+export function quarterlyFigures(rows:FinancialFact[],asOf:string,recordedAsOf?:string):Figure[]{
+ const choices=new Map<string,FinancialFact>();
+ for(const f of rows){
+  const days=(Date.parse(f.period_end)-Date.parse(f.period_start))/86400000;
+  if(!f.period_start||days<75||days>105||f.known_from>asOf||recordedAsOf&&f.recorded_at>recordedAsOf)continue;
+  const key=f.metric+':'+f.period_end,old=choices.get(key);
+  const rank=(x:FinancialFact)=>{const i=TAGS[x.metric]?.indexOf(x.source_tag)??-1;return i<0?999:i;};
+  if(!old||f.known_from>old.known_from||f.known_from===old.known_from&&(rank(f)<rank(old)||rank(f)===rank(old)&&f.accession>old.accession))choices.set(key,f);
+ }
+ return [...choices.values()].map(f=>({metric:f.metric,value:f.value,unit:f.unit,period_end:f.period_end,known_from:f.known_from,inputs:[f],method:'reported:'+f.source_tag,confidence:'reported',reason:'Directly reported approximately three-month period'}));
+}
 export function selectFacts(rows:FinancialFact[],asOf:string,recordedAsOf?:string){
  const choices=new Map<string,FinancialFact>();
  for(const f of rows){if(f.known_from>asOf||recordedAsOf&&f.recorded_at>recordedAsOf||!annual(f))continue;const key=f.metric+':'+f.period_end;const old=choices.get(key);const priority=TAGS[f.metric]?.indexOf(f.source_tag)??99;const oldPriority=old?TAGS[old.metric]?.indexOf(old.source_tag)??99:99;
@@ -23,7 +35,7 @@ export function selectFacts(rows:FinancialFact[],asOf:string,recordedAsOf?:strin
 export function derive(rows:FinancialFact[],asOf:string,recordedAsOf?:string):Figure[]{
  const selected=selectFacts(rows,asOf,recordedAsOf),periods=[...new Set(selected.filter(f=>f.period_start).map(f=>f.period_end))].sort();const all:Figure[]=[];const byPeriod=new Map<string,Record<string,Figure>>();
  for(const end of periods){const map:Record<string,Figure>={};
- for(const metric of Object.keys(TAGS)){const f=selected.find(f=>f.metric===metric&&f.period_end===end);map[metric]={metric,value:f?.value??null,unit:metric==='shares_diluted'?'shares':'USD',period_end:end,known_from:f?.known_from||null,inputs:f?[f]:[],method:f?'reported:'+f.source_tag:'unavailable',confidence:f?'reported':'unavailable',reason:f?'Reported annual period or year-end balance':'No supported tag for this annual period'};}
+ for(const metric of Object.keys(TAGS)){const f=selected.find(f=>f.metric===metric&&f.period_end===end);map[metric]={metric,value:f?.value??null,unit:metric==='shares_diluted'?'shares':metric==='eps_diluted'?'USD/shares':'USD',period_end:end,known_from:f?.known_from||null,inputs:f?[f]:[],method:f?'reported:'+f.source_tag:'unavailable',confidence:f?'reported':'unavailable',reason:f?'Reported annual period or year-end balance':'No supported tag for this annual period'};}
  const calc=(metric:string,deps:Figure[],fn:(v:number[])=>number,method:string,unit='ratio',estimate=false)=>{
  const inputs=[...new Map(deps.flatMap(d=>d.inputs).map(f=>[f.id,f])).values()];const durations=inputs.filter(f=>f.period_start&&f.period_end===end).map(f=>f.period_start);const aligned=new Set(durations).size<=1;
  const missing=deps.some(d=>d.value===null);let value=missing||!aligned?null:fn(deps.map(d=>d.value!));if(value!==null&&!Number.isFinite(value))value=null;

@@ -15,6 +15,13 @@
       "when": 1789637516131,
       "tag": "0001_illegal_frightful_four",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794439552976,
+      "tag": "0002_lonely_firebird",
+      "breakpoints": true
     }
   ]
 }

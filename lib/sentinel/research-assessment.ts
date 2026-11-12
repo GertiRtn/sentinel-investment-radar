@@ -1,0 +1,11 @@
+export type AssessmentRow={label:string;changePercent:number|null;accession:string|null;rawEventId:string|null;previous:{accession:string;rawEventId:string}|null};
+export type AssessmentPoint={label:string;observation:string;meaning:string;counterpoint:string;accession:string;rawEventId:string;previousAccession:string;previousRawEventId:string};
+/** Explain directly comparable reported figures without predicting returns or assigning causes. */
+export function assessReportedResults(rows:AssessmentRow[]):AssessmentPoint[]{
+ const templates:Record<string,{up:string;down:string;unchanged:string;counter:string}>={
+  'Revenue':{up:'Higher revenue indicates more reported sales than the comparable prior year.',down:'Lower revenue indicates fewer reported sales than the comparable prior year.',unchanged:'Revenue was broadly unchanged at the displayed precision.',counter:'Revenue alone does not explain margins, cash generation or the price investors pay.'},
+  'Net income':{up:'Higher net income indicates more reported profit after expenses and taxes.',down:'Lower net income indicates less reported profit after expenses and taxes.',unchanged:'Net income was broadly unchanged at the displayed precision.',counter:'Tax, one-off items and accounting changes can affect profit; examine the filing.'},
+  'Operating cash flow':{up:'More operating cash flow was reported than in the comparable prior year.',down:'Less operating cash flow was reported than in the comparable prior year.',unchanged:'Operating cash flow was broadly unchanged at the displayed precision.',counter:'Working-capital timing and investment needs can affect cash flow; examine the filing.'}
+ };
+ return rows.flatMap(r=>{const t=templates[r.label],n=r.changePercent;if(!t||n===null||!Number.isFinite(n)||!r.accession||!r.rawEventId||!r.previous?.accession||!r.previous.rawEventId)return [];const rounded=Number(n.toFixed(1));const direction=rounded>0?'rose':rounded<0?'fell':'was unchanged';return [{label:r.label,observation:rounded===0?`${r.label} was unchanged at one decimal place.`:`${r.label} ${direction} ${Math.abs(rounded).toFixed(1)}% versus the comparable prior year.`,meaning:rounded>0?t.up:rounded<0?t.down:t.unchanged,counterpoint:t.counter,accession:r.accession,rawEventId:r.rawEventId,previousAccession:r.previous.accession,previousRawEventId:r.previous.rawEventId}];});
+}

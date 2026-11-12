@@ -1,3 +1,4 @@
+import {sql} from 'drizzle-orm';
 import {sqliteTable,text,integer,real,uniqueIndex,index} from 'drizzle-orm/sqlite-core';
 export const workspaceRevision=sqliteTable('workspace_revision',{
  id:text('id').primaryKey(),owner:text('owner').notNull(),revision:integer('revision').notNull(),createdAt:text('created_at').notNull(),data:text('data').notNull(),
@@ -16,7 +17,11 @@ export const sourceState=sqliteTable('source_state',{
 });
 export const signalLog=sqliteTable('signal_log',{
  id:text('id').primaryKey(),owner:text('owner').notNull(),createdAt:text('created_at').notNull(),kind:text('kind').notNull(),entity:text('entity'),body:text('body').notNull(),probability:real('probability'),resolvesAt:text('resolves_at'),
-},t=>[index('signal_owner_time').on(t.owner,t.createdAt)]);
+},t=>[index('signal_owner_time').on(t.owner,t.createdAt),
+ index('discovery_case_lookup').on(t.owner,sql`json_extract(body,'$.candidateId')`,sql`json_extract(body,'$.symbol')`).where(sql`kind='discovery_case'`),
+ index('discovery_attempt_lookup').on(t.owner,sql`json_extract(body,'$.candidateId')`,sql`json_extract(body,'$.symbol')`,t.createdAt).where(sql`kind='discovery_attempt'`),
+ index('outcome_case_lookup').on(t.owner,sql`json_extract(body,'$.caseId')`).where(sql`kind='discovery_outcome'`),
+ index('outcome_attempt_lookup').on(t.owner,sql`json_extract(body,'$.caseId')`,t.createdAt).where(sql`kind='outcome_attempt'`)]);
 export const signalResolution=sqliteTable('signal_resolution',{
  id:text('id').primaryKey(),signalId:text('signal_id').notNull().references(()=>signalLog.id),owner:text('owner').notNull(),resolvedAt:text('resolved_at').notNull(),outcome:integer('outcome').notNull(),evidence:text('evidence').notNull(),
 },t=>[uniqueIndex('resolution_signal').on(t.signalId)]);
