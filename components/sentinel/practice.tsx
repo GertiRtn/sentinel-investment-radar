@@ -4,6 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { newId } from "@/lib/sentinel/client-id";
 import { PaperPortfolio } from "./paper-portfolio";
+import { PracticeRisk } from "./practice-risk";
 
 /* Practice v2: $10,000 virtual, live IEX prices, every position benchmarked against SPY. */
 
@@ -153,6 +154,8 @@ export function Practice() {
                 {s?.scorecard?.[k]?.length ? <ul className="space-y-1 text-sm">{s.scorecard[k].map((b: any) => <li key={b.band} className="flex justify-between gap-2"><span>{b.band}</span><span className="tabular-nums text-muted-foreground">{b.trades} trades · {b.beatSpy} beat SPY · {b.enough ? <span className={tone(b.medianVsSpyPct)}>median {pct(b.medianVsSpyPct)}</span> : "too few"}</span></li>)}</ul> : <p className="text-sm text-muted-foreground">No priced trades yet.</p>}
               </div>))}</div>
           </div>
+
+          <PracticeRisk />
 
           {s?.closed?.length > 0 && (
             <div className="rounded-xl border border-border bg-card p-5">
