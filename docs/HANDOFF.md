@@ -351,3 +351,26 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 - `thesis-monitor-v2`: a trip from quarterly-only criteria → **Weakening** ("Quarterly early warning: …"); annual/event trips → **Broken**; unknowns still → Can't check (and mention any quarterly trip).
 - The Thesis checks help text explains the two options with an example.
 - Verified: 134/134 tests (7 new), tsc, build. Not verified in the browser; there are no kill criteria on the live Site yet (both followed companies show "No thesis").
+
+## 2026-11-12 (late night) — Claude Code: case sheet "What changed?" (founder brief: discover improving situations early)
+
+**Baseline:** main 021d666 (#25 and #26 merged, confirmed via the GitHub API); `node --test tests/*.test.mjs` 136/136.
+
+**Built (branch `case-what-changed`):**
+- `lib/sentinel/case-context.ts`:
+  - `whatChanged(pack, case)` reuses `buildEvidencePack` (SEC facts filed **and** recorded by the case time) and `templateReading`. Each line is tagged as a reported claim, SEC fact, computed value, rule reading or missing item.
+  - A % change is shown only for periods about a year apart, with the same reporting tag, similar period length and a positive base; otherwise there is no change and the reason is given.
+  - Expectations and guidance are always `unknown`, because Sentinel has no such data.
+  - `priceContext()`: before = 20 matched sessions ending at the last NY close before publication (flagged known at case time); after = up to 20 completed sessions (flagged as later than the case). Sessions not finished at fetch time are excluded, and only dates present for both the stock and SPY are used. DST-aware close time. It never says the event caused the move.
+- `app/api/case-context/route.ts`: owner-scoped GET. Bars are fetched only with `?prices=1` (a user click), archived in `raw_event`, reused for 6 h via `source_state`, and never part of the hourly run. Missing ticker, publication time, credentials, 429 or HTTP errors → `unavailable` with the reason.
+- `components/sentinel/what-changed.tsx` sits in the case sheet above the evidence score, so it is reachable from both the Brief and Discover (button labels say "Open case: what changed & research team").
+- Labels: v2 `INVESTIGATE` now displays as **Meets research rules** (it was "Strong case"); stored conclusions, the v1 label and outcome-group partitions are unchanged and tested. Brief counters and headings were renamed to match.
+- The Research team is unchanged: price data is licensed market data and is not added to the shareable pack or sent to any model.
+
+**Verified:** 144/144 tests (136 before; none loosened). New: `tests/case-context.test.mjs` (7) and a Miniflare test covering owner isolation, no network until asked, archive/reuse, an unchanged case and ranking, and an unavailable ticker. `tsc` clean, `pnpm build` OK.
+
+**Live state (read-only check via Chrome, about 20:53 UTC):** the last scan was 20:20 UTC (partial), with 1,621 queued. No case created since #25 was published yet (all 9 v2 cases still carry the v1 identity). 0 outcome records and 0 outcome attempts: the oldest case is from 2026-11-11, and outcomes need `horizonWaitDays(5)` = 8 calendar days plus 6 matched completed closes, so the outcome-load fix (#24) **has not run against real due pairs and remains unverified in production.**
+
+**Not verified:** the browser rendering of the new section; real Alpaca bar responses for a real case (mocked only).
+
+**Separate follow-ups (not done, by instruction):** discovery capacity (6 per run vs 1,621 queued); queue order and batch limits are unchanged.
