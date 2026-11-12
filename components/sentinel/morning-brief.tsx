@@ -82,7 +82,7 @@ function ScoreChecklist({ c }: { c: any }) {
   );
 }
 
-function CaseSheet({ c, onClose }: { c: any | null; onClose: () => void }) {
+export function CaseSheet({ c, onClose }: { c: any | null; onClose: () => void }) {
   return (
     <Sheet open={!!c} onOpenChange={o => !o && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-lg">

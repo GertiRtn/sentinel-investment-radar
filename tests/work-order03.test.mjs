@@ -135,9 +135,9 @@ await test('an old case collects 5/20/60/120-day outcomes as separate records; a
  const owner='horizon-owner',day=86400000,caseAt=new Date(Date.now()-200*day).toISOString();
  await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,body) VALUES(?,?,?,'discovery_case',?)").bind('horizon-case',owner,caseAt,JSON.stringify({symbol:'HZN',status:'complete',conclusion:'MONITOR',identity:{cik:'0000000001'}})).run();
  const days=Array.from({length:140},(_,i)=>new Date(Date.parse(caseAt)+(i+1)*day).toISOString().slice(0,10));
- for(const ticker of ['HZN','SPY'])mock.get('https://data.alpaca.markets').intercept({path:new RegExp('^/v2/stocks/'+ticker+'/bars\\?')}).reply(200,JSON.stringify({bars:days.map((d,i)=>({t:d+'T04:00:00Z',c:ticker==='SPY'?400:10+i})),next_page_token:null})).times(4);
+ for(const ticker of ['HZN','SPY'])mock.get('https://data.alpaca.markets').intercept({path:new RegExp('^/v2/stocks/'+ticker+'/bars\\?')}).reply(200,JSON.stringify({bars:days.map((d,i)=>({t:d+'T04:00:00Z',c:ticker==='SPY'?400:10+i})),next_page_token:null}));
  const run=(await req('/observe-outcomes','POST',{},owner)).data;
- assert.equal(run.attempted,4,JSON.stringify(run));assert.deepEqual(run.items.map(x=>[x.status,x.horizonIntervals]),[['observed',5],['observed',20],['observed',60],['observed',120]]);
+ assert.equal(run.attempted,4,JSON.stringify(run));assert.equal(run.requests.bars,2,'one bar request per symbol per run (stock once, SPY once), not one per horizon');assert.deepEqual(run.items.map(x=>[x.status,x.horizonIntervals]),[['observed',5],['observed',20],['observed',60],['observed',120]]);
  const rows=(await db.prepare("SELECT id,body FROM signal_log WHERE owner=? AND kind='discovery_outcome'").bind(owner).all()).results.map(r=>({id:r.id,...JSON.parse(r.body)}));
  assert.equal(new Set(rows.map(r=>r.id)).size,4,'one record per horizon');assert.deepEqual(rows.map(r=>r.horizonIntervals).sort((a,b)=>a-b),[5,20,60,120]);
  const r120=rows.find(r=>r.horizonIntervals===120);assert.equal(r120.matchedDates.length,121);assert.ok(Math.abs(r120.stockReturn-12)<1e-9);assert.equal(r120.benchmarkReturn,0);
@@ -147,7 +147,7 @@ await test('an old case collects 5/20/60/120-day outcomes as separate records; a
  // A 40-day-old case with only ten closes: the 5-day outcome is recorded, the 20-day one waits (attempt logged), and nothing is guessed.
  const shortAt=new Date(Date.now()-40*day).toISOString(),shortDays=Array.from({length:10},(_,i)=>new Date(Date.parse(shortAt)+(i+1)*day).toISOString().slice(0,10));
  await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,body) VALUES(?,?,?,'discovery_case',?)").bind('short-case','short-owner',shortAt,JSON.stringify({symbol:'SHRT',status:'complete',identity:{cik:'0000000001'}})).run();
- for(const ticker of ['SHRT','SPY'])mock.get('https://data.alpaca.markets').intercept({path:new RegExp('^/v2/stocks/'+ticker+'/bars\\?')}).reply(200,JSON.stringify({bars:shortDays.map((d,i)=>({t:d+'T04:00:00Z',c:20+i})),next_page_token:null})).times(2);
+ for(const ticker of ['SHRT','SPY'])mock.get('https://data.alpaca.markets').intercept({path:new RegExp('^/v2/stocks/'+ticker+'/bars\\?')}).reply(200,JSON.stringify({bars:shortDays.map((d,i)=>({t:d+'T04:00:00Z',c:20+i})),next_page_token:null}));
  const short=(await req('/observe-outcomes','POST',{},'short-owner')).data;
  assert.deepEqual(short.items.map(x=>[x.status,x.horizonIntervals]),[['observed',5],['pending',20]],JSON.stringify(short));
  assert.match(short.items[1].detail,/Fewer than 21 matching/);
