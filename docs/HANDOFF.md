@@ -331,3 +331,10 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 **Enablement (founder only; not done):** set the Site variable `RESEARCH_TEAM_ENABLED=1` (and optionally `RESEARCH_MODEL` to an allow-listed id). `NVIDIA_API_KEY` is already a Site secret. Leave `SHADOW_READER_ENABLED` as it is.
 
 **Open risks carried forward:** D1 overload in outcome observation (this feature adds no hourly load); Alpaca key rotation still unconfirmed; evidence-score weights unvalidated; IEX is a single-exchange midpoint; share basis unverified; provider news coverage partial.
+
+## 2026-11-12 (late) — Claude Code: outcome observation load fix + Discover case sheet
+
+- **D1 overload (reported in a recent run):** `lib/sentinel/outcome-collector.ts` used to run, for every (case, horizon) pair, a correlated query over all the owner's cases × 4 horizons with JSON NOT EXISTS checks. That is up to 8 such scans per run. It also fetched and archived the stock and SPY bars again for each pair, which meant up to 16 × ~300 KB raw writes. Now there is one D1 batch of three light reads (`dueOutcomePairs`, selecting only symbol and cik, not whole case bodies, with at most 400 oldest cases), matching in memory, one bar request per symbol per run, and SPY once per run. Each raw payload is written once (INSERT OR IGNORE by hash). Selection order, idempotency, the six-hour cooldown and the outcome record format are unchanged.
+- Tests: the horizon test's mocks now allow one request per symbol (previously four). It asserts `requests.bars === 2`, which is a stricter check, and every outcome assertion is unchanged.
+- **Discover:** each ranked row has "Open case & research team", which opens the same case sheet as the Brief (`CaseSheet` exported from `components/sentinel/morning-brief.tsx`). That makes the Research team panel reachable from Discover.
+- Verified: full test suite, tsc, build (counts in the PR). Not verified: production D1 load after the change, and the browser UI.
