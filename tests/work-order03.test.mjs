@@ -82,7 +82,7 @@ await test('practice v2 prices trades from live IEX quotes, benchmarks SPY, appe
  assert.deepEqual(kinds.map(k=>[k.kind,k.n]),[['practice_review',1],['practice_trade',2]]);
 });
 await test('following and discover ranking load from stored records for the owner only',async()=>{
- const f=await req('/following');assert.equal(f.status,200,JSON.stringify(f.data));assert.equal(f.data.version,'thesis-monitor-v1');assert.ok(f.data.rows.length>=1);
+ const f=await req('/following');assert.equal(f.status,200,JSON.stringify(f.data));assert.equal(f.data.version,'thesis-monitor-v2');assert.ok(f.data.rows.length>=1);
  for(const r of f.data.rows)assert.ok(['Broken','Weakening','Holding',"Can't check",'No thesis'].includes(r.status));
  assert.equal((await req('/following',undefined,undefined,'owner-b')).data.rows.length,0);
  const d=await req('/discovery');assert.equal(d.status,200);assert.equal(d.data.ranked.version,'discover-rank-v1');
