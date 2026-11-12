@@ -338,3 +338,10 @@ Verification: 36 Node tests and TypeScript passed, including fixture-backed owne
 - Tests: the horizon test's mocks now allow one request per symbol (previously four). It asserts `requests.bars === 2`, which is a stricter check, and every outcome assertion is unchanged.
 - **Discover:** each ranked row has "Open case & research team", which opens the same case sheet as the Brief (`CaseSheet` exported from `components/sentinel/morning-brief.tsx`). That makes the Research team panel reachable from Discover.
 - Verified: full test suite, tsc, build (counts in the PR). Not verified: production D1 load after the change, and the browser UI.
+
+## 2026-11-12 (night) — Claude Code: quarterly kill criteria (founder decision: keep yearly and add quarterly)
+
+- `lib/sentinel/criteria.ts`: comparisons accept optional `period: "quarter"` and `basis: "yoy_pct"`. Existing criteria have neither field and evaluate exactly as before; a test checks this byte for byte. Quarterly uses directly reported three-month 10-Q figures only (`quarterlyFigures`, known by the evaluation time). Supported metrics: revenue, net income, operating income, CFO, capex and EPS; anything else is `unknown`. YoY compares with the same quarter a year earlier, with the same tag and a positive base. Sentinel never derives fiscal Q4 (annual minus YTD), so a skipped quarter that ends on the fiscal year end does not break a streak; any other gap is unknown. Alerts show the measured value (the % for yoy) and `period`.
+- `thesis-monitor-v2`: a trip from quarterly-only criteria → **Weakening** ("Quarterly early warning: …"); annual/event trips → **Broken**; unknowns still → Can't check (and mention any quarterly trip).
+- The Thesis checks help text explains the two options with an example.
+- Verified: 134/134 tests (7 new), tsc, build. Not verified in the browser; there are no kill criteria on the live Site yet (both followed companies show "No thesis").
