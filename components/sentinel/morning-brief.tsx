@@ -6,6 +6,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import { friendlyLabel, screenLabel } from "@/lib/sentinel/screen-label";
 import { caseEvidenceScore, SCORE_MEANING } from "@/lib/sentinel/evidence-score";
 import { ResearchTeamPanel } from "./research-team-panel";
+import { WhatChanged } from "./what-changed";
 
 /* Morning brief dashboard: bottom line first, takes, radar, watchlist; everything else folded. */
 
@@ -62,7 +63,7 @@ function TakeCard({ t, onOpen }: { t: Take; onOpen: () => void }) {
       </dl>
       <div className="mt-5 flex flex-wrap items-end justify-between gap-3 border-t border-border pt-4">
         <KeyFact f={t.keyFact} />
-        <button onClick={onOpen} className="inline-flex items-center gap-1 text-sm font-medium text-sky-300 hover:underline">Open full case <ArrowRight size={14} /></button>
+        <button onClick={onOpen} className="inline-flex items-center gap-1 text-sm font-medium text-sky-300 hover:underline">Open case, what changed &amp; research team <ArrowRight size={14} /></button>
       </div>
     </article>
   );
@@ -94,6 +95,7 @@ export function CaseSheet({ c, onClose }: { c: any | null; onClose: () => void }
           </SheetHeader>
           <div className="space-y-6 px-4 pb-8 text-sm">
             <p className="text-muted-foreground">{c.event?.source ?? "Unknown source"} · published {dayTime(c.event?.publishedAt)} · assessed {dayTime(c.createdAt)}{c.event?.url && <> · <a className="inline-flex items-center gap-1 text-sky-300 hover:underline" href={c.event.url} target="_blank" rel="noreferrer">original <ExternalLink size={12} /></a></>}</p>
+            {c.id && <WhatChanged caseId={c.id} symbol={c.symbol} />}
             <ScoreChecklist c={c} />
             {c.id && <ResearchTeamPanel caseId={c.id} />}
             <div><h4 className="mb-2 font-semibold">Screening rules</h4>
@@ -146,7 +148,7 @@ export function MorningBriefView({ embedded = false }: { embedded?: boolean }) {
           <section className="grid gap-6 rounded-2xl border border-border bg-card p-7 lg:grid-cols-[1fr_auto] lg:items-center">
             <div><h1 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">The bottom line · last {data.windowHours} hours</h1><p className="text-xl leading-relaxed sm:text-2xl sm:leading-relaxed">{data.bottomLine}</p></div>
             <div className="flex gap-3 lg:flex-col">
-              {[["investigate", "strong cases", "text-sky-300"], ["monitor", "to watch", "text-amber-300"], ["waiting", "not enough data", "text-slate-300"]].map(([k, t, cls]) => (
+              {[["investigate", "meet research rules", "text-sky-300"], ["monitor", "to watch", "text-amber-300"], ["waiting", "not enough data", "text-slate-300"]].map(([k, t, cls]) => (
                 <a key={k} href={k === "waiting" ? "#waiting" : k === "monitor" ? "#radar" : "#takes"} className="flex min-w-36 items-baseline gap-2 rounded-lg border border-border px-4 py-2.5 hover:bg-accent"><span className={`text-2xl font-semibold tabular-nums ${cls}`}>{data.counts[k]}</span><span className="text-sm text-muted-foreground">{t}</span></a>
               ))}
             </div>
@@ -155,7 +157,7 @@ export function MorningBriefView({ embedded = false }: { embedded?: boolean }) {
           {/* Row 2: takes + side column */}
           <div className="grid gap-6 lg:grid-cols-12">
             <section id="takes" className="space-y-4 lg:col-span-8">
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Strong cases</h2>
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Meet research rules</h2>
               {data.takes.length ? data.takes.map((t: Take) => <TakeCard key={t.caseId} t={t} onOpen={() => setOpen(t.caseId)} />) :
                 <p className="rounded-xl border border-dashed border-border p-6 leading-relaxed text-muted-foreground">No case met all three rules in the last 24 hours. That is normal: Sentinel only flags cases with complete data, a direct company role and a qualifying event.</p>}
               {data.moreTakes > 0 && <p className="text-sm text-muted-foreground">+{data.moreTakes} more in the full workspace.</p>}
