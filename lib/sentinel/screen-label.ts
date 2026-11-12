@@ -8,7 +8,7 @@ export function screenLabel(record:any, unassessed=false):string {
 }
 
 /** Plain-English display names for screen-v2 labels. Stored values never change. */
-export const FRIENDLY_LABELS:Record<string,string>={INVESTIGATE:'Strong case',MONITOR:'Watch',WAIT:'Not enough data'};
+export const FRIENDLY_LABELS:Record<string,string>={INVESTIGATE:'Meets research rules',MONITOR:'Watch',WAIT:'Not enough data'};
 export function friendlyLabel(label:string):string{
- return FRIENDLY_LABELS[label]??label; // exact match only: 'INVESTIGATE (research-screen-v1)' is not a strong case
+ return FRIENDLY_LABELS[label]??label; // exact match only: 'INVESTIGATE (research-screen-v1)' does not meet the v2 rules
 }
