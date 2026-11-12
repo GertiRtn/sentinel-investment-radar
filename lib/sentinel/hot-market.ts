@@ -1,0 +1,6 @@
+export function buildHotMarket(rows:{body:string;created_at:string}[],now:string){
+ const end=Date.parse(now),symbols=new Map<string,{symbol:string;oneHour:number;sixHours:number;articles:any[];seen:Set<string>}>();
+ for(const row of rows){let x:any;try{x=JSON.parse(row.body)}catch{continue}const at=Date.parse(row.created_at);if(!Number.isFinite(at)||at>end||at<end-21600000||!Array.isArray(x.symbols))continue;
+ for(const symbol of new Set<string>(x.symbols.filter((v:unknown):v is string=>typeof v==='string'&&/^[A-Z][A-Z0-9.\-]{0,9}$/.test(v)))){let s=symbols.get(symbol);if(!s){s={symbol,oneHour:0,sixHours:0,articles:[],seen:new Set()};symbols.set(symbol,s)}const key=String(x.url||x.id||'');if(!key||s.seen.has(key))continue;s.seen.add(key);s.sixHours++;if(at>=end-3600000)s.oneHour++;if(s.articles.length<5&&typeof x.url==='string'&&x.url.startsWith('https://'))s.articles.push({headline:x.headline,url:x.url,source:x.source,publishedAt:x.publishedAt,observedAt:row.created_at});}}
+ return [...symbols.values()].map(({seen,...s})=>({...s,baselinePerHour:(s.sixHours-s.oneHour)/5,forecastNewsPerHour:s.sixHours/6})).sort((a,b)=>b.oneHour-a.oneHour||b.sixHours-a.sixHours||a.symbol.localeCompare(b.symbol));
+}
