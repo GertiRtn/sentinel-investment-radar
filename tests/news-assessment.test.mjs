@@ -13,3 +13,10 @@ test('company relevance distinguishes direct events from ticker-only and inciden
  assert.equal(a('Competitor challenges Apple over new product').level,'review');
  assert.equal(a('Apple sales beat expectations').level,'review');
 });
+
+test('v2 recognises cleaned company names and direct actions without promoting analyst or incidental mentions',()=>{
+ for(const [headline,company] of [['HubSpot Reaffirms Q4 And FY26 Guidance','HubSpot, Inc.'],['SES AI Affirms FY2026 Sales Guidance','SES AI Corp'],['AIR Global Reports Q3 Results','AIR Global PLC'],["HubSpot's results improve",'HubSpot, Inc.'],['Costco reports quarterly results','Costco Wholesale Corp /DE/'],['Acme reports results','Acme Group Holdings N.V.']]){
+  const result=assessCompanyRelevance(headline,company);assert.equal(result.level,'direct_candidate',headline);assert.equal(result.version,'headline-relevance-v2');
+ }
+ for(const [headline,company] of [['Bernstein Adjusts Its Costco Target','Costco Wholesale Corp'],['Unrelated company reports results','HubSpot, Inc.'],['Product launches at HubSpot stores','HubSpot, Inc.'],['Global reports results','Global Energy Holdings'],['American reports results','American Airlines Group Inc.']])assert.equal(assessCompanyRelevance(headline,company).level,'review',headline);
+});
