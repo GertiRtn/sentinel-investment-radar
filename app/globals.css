@@ -140,3 +140,12 @@ body{margin:0;background:var(--background);color:var(--foreground);font-family:A
 
 /* Library menu in the main tab bar */
 .library-trigger{display:inline-flex;align-items:center;gap:6px;padding:14px 0 19px;font-size:14px;color:#97a5b9;background:transparent;border:0;margin-left:auto}.library-trigger:hover,.library-trigger.active{color:#cbf47b}
+
+/* Discover: ranked by evidence */
+.ranked-discover{margin:18px 0 26px}.ranked-list{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:10px}
+.ranked-row{display:flex;gap:14px;align-items:flex-start;border:1px solid var(--border);border-radius:12px;padding:14px 16px;background:var(--card)}
+.ranked-pos{width:22px;color:#97a5b9;font-variant-numeric:tabular-nums;padding-top:6px}
+.ranked-score{min-width:64px;text-align:center;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}.ranked-score small{display:block;font-size:11px;font-weight:400;color:#97a5b9}
+.ranked-score.strong{color:#7dd3fc}.ranked-score.mixed{color:#fcd34d}.ranked-score.weak{color:#cbd5e1}.ranked-score.none{color:#97a5b9}
+.ranked-body{flex:1;min-width:0}.ranked-headline{margin:4px 0}.ranked-label{color:#97a5b9}
+.raw-feed>summary{cursor:pointer;color:#97a5b9;margin:10px 0}
