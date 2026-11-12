@@ -1,7 +1,7 @@
 import {database,hash,iso} from '@/db/store';
 import {resolveIdentifier,ingest,companyFile} from './edgar';
 import {classifySecurity,collectSecurityAsset} from './security-asset';
-import {priceAssessment,researchDecision} from './price-assessment';
+import {priceAssessment,researchDecisionV2} from './price-assessment';
 import {cashflowScenarios} from './cashflow-scenarios';
 import {investmentBrief} from './investment-brief';
 import {assessCompanyRelevance} from './news-assessment';
@@ -27,7 +27,7 @@ export async function assessDiscoveryQueue(owner:string,email:string,oldestFirst
    }
   }
  }catch(e){const message=e instanceof Error?e.message:'Company assessment failed';await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_attempt',NULL,?)").bind(crypto.randomUUID(),owner,iso(),JSON.stringify({candidateId:row.id,symbol,message})).run();return {status:'failed',candidateId:row.id,symbol,message:'Assessment failed; the candidate will be retried after a six-hour cooldown.',detail:message};}
- const createdAt=iso(),decision=researchDecision({identity,price,brief,valuation,asOf:createdAt}),result={version:'discovery-case-v2',candidateId:row.id,symbol,createdAt,status,conclusion:decision.conclusion,reason:decision.reason,decision,event:{headline:event.headline,url:event.url,source:event.source,publishedAt:event.publishedAt,firstObservedAt:event.firstObservedAt,rawEventId:event.rawEventId,analysis:event.analysis,providerSummary:event.providerSummary||null},identity,security,brief,valuation,price,missing:[...missing,'Verify the event and whether the company is directly affected.','Verify security class and share basis; compare price and valuation with market expectations.','Test the investment thesis and likely costs.'],limitations:'Ticker-to-company mapping is not proof that the news affects this company. A headline and IEX quote do not establish fair value or a buy signal.'};
+ const createdAt=iso(),decision=researchDecisionV2({identity,price,brief,asOf:createdAt,topics:event.analysis?.topics}),result={version:'discovery-case-v2',candidateId:row.id,symbol,createdAt,status,conclusion:decision.conclusion,reason:decision.reason,decision,readiness:decision.readiness,rules:decision.rules,event:{headline:event.headline,url:event.url,source:event.source,publishedAt:event.publishedAt,firstObservedAt:event.firstObservedAt,rawEventId:event.rawEventId,analysis:event.analysis,providerSummary:event.providerSummary||null},identity,security,brief,valuation,price,missing:[...missing,'Verify the event and whether the company is directly affected.','Verify security class and share basis; compare price and valuation with market expectations.','Test the investment thesis and likely costs.'],limitations:'Ticker-to-company mapping is not proof that the news affects this company. A headline and IEX quote do not establish fair value or a buy signal.'};
  const id='discovery-case:'+await hash(JSON.stringify([owner,row.id,symbol]));const saved=await db.prepare("INSERT OR IGNORE INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_case',?,?)").bind(id,owner,createdAt,identity?'sec:'+identity.cik:null,JSON.stringify(result)).run();
  return {status,created:!!saved.meta.changes,case:saved.meta.changes?result:null};
 }
