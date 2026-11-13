@@ -1,5 +1,6 @@
 "use client";
 import { ExternalLink } from "lucide-react";
+import { EventVerification } from "./event-verification";
 
 /* Investment thesis panel (investment-thesis-v1): five questions about one case, from stored records and fixed rules. */
 
@@ -31,7 +32,7 @@ function Move({ w, symbol }: { w: any; symbol: string }) {
   );
 }
 
-export function ThesisPanel({ t, onLoadPrices, loadingPrice }: { t: any; onLoadPrices: () => void; loadingPrice: boolean }) {
+export function ThesisPanel({ t, onLoadPrices, loadingPrice, caseId }: { t: any; onLoadPrices: () => void; loadingPrice: boolean; caseId?: string }) {
   const a = t.appeared, v = t.priceValuation.valuation, m = t.priceValuation.priceMove;
   return (
     <div className="space-y-4 rounded-lg border border-sky-400/40 p-3 text-xs">
@@ -43,6 +44,7 @@ export function ThesisPanel({ t, onLoadPrices, loadingPrice }: { t: any; onLoadP
         <p className="mt-0.5 text-muted-foreground">{a.source ?? "Unknown source"} · published {when(a.publishedAt)} · assessed by Sentinel {when(a.assessedAt)} · {a.readNote}</p>
         <p className="mt-1"><span className={`mr-1.5 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${MATCH[a.match.status]}`}>Company match: {a.match.label}</span><span className="text-muted-foreground">{a.match.text}</span></p>
         <p className="mt-1"><span className="mr-1.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase">{a.eventType.label}</span><span className="text-muted-foreground">{a.eventType.text}</span></p>
+        {caseId && <EventVerification caseId={caseId} />}
       </section>
 
       <section><H n="B">What supports a thesis</H>
