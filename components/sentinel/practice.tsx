@@ -5,6 +5,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import { newId } from "@/lib/sentinel/client-id";
 import { PaperPortfolio } from "./paper-portfolio";
 import { PracticeRisk } from "./practice-risk";
+import { AutoPractice } from "./auto-practice";
 
 /* Practice v2: $10,000 virtual, live IEX prices, every position benchmarked against SPY. */
 
@@ -156,6 +157,8 @@ export function Practice() {
           </div>
 
           <PracticeRisk />
+
+          <AutoPractice />
 
           {s?.closed?.length > 0 && (
             <div className="rounded-xl border border-border bg-card p-5">
