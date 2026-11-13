@@ -106,7 +106,7 @@ export function CaseSheet({ c, onClose }: { c: any | null; onClose: () => void }
             </div>
             <div><h4 className="mb-2 font-semibold">Figures and sources</h4>
               <ul className="space-y-2">
-                {c.price?.status === "indicative" && <li><span className="font-medium tabular-nums">P/E {c.price.ratio.toFixed(1)}</span><div className="text-xs text-muted-foreground">IEX midpoint {dayTime(c.price.quoteTime)} ÷ annual diluted EPS (year to {c.price.periodEnd}). {c.price.limitations}</div></li>}
+                {c.price?.status === "indicative" && <li><span className="font-medium tabular-nums">P/E {c.price.ratio.toFixed(1)}</span><div className="text-xs text-muted-foreground">{c.price.basis === "last_close" ? `${c.price.priceLabel} (last close, not a live price)` : `IEX midpoint ${dayTime(c.price.quoteTime)}`} ÷ annual diluted EPS (year to {c.price.periodEnd}). {c.price.limitations}</div></li>}
                 {c.price && c.price.status !== "indicative" && <li><span className="rounded bg-muted px-1.5 py-0.5 text-xs">Unknown</span> P/E: {c.price.reason}</li>}
                 {(c.evidence ?? []).map((e: any) => <li key={e.label}><span className="font-medium">{e.label}</span> {typeof e.value === "number" ? <span className="tabular-nums">{e.value.toLocaleString("en-US")} {e.unit}</span> : <span className="rounded bg-muted px-1.5 py-0.5 text-xs">Unknown</span>}<div className="text-xs text-muted-foreground">Period ending {e.periodEnd ?? "unknown"} · filed {e.filed ?? "unknown"}{e.accession ? ` · ${e.accession}` : ""}</div></li>)}
               </ul>

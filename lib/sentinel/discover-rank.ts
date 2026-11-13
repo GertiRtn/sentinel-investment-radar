@@ -1,6 +1,12 @@
 /**
- * Discover ranking (discover-rank-v1): assessed cases, one row per symbol,
- * highest evidence score first. This is research routing (invariant 6): it
+ * Discover ranking (discover-rank-v2): assessed cases, one row per symbol,
+ * highest evidence score first.
+ *
+ * v2 (2026-11-13) differs from v1 in one way: a row whose report is probably
+ * about a different company (event-match-v1 `name_conflict`, e.g. an
+ * "ams-OSRAM" report tagged to the US ticker AMS) is placed after every other
+ * row and says why. Each row also carries its event match so the page can warn
+ * when the company is not named. Nothing else about the order changed. This is research routing (invariant 6): it
  * orders what to read first, it does not forecast returns.
  *
  * Order: scored cases by evidence score (ties: the stronger screen label, then
@@ -8,8 +14,9 @@
  * on the same symbol are merged into one row and counted.
  */
 import { caseEvidenceScore } from './evidence-score';
+import { caseEventMatch } from './event-match';
 
-export const DISCOVER_RANK_VERSION = 'discover-rank-v1';
+export const DISCOVER_RANK_VERSION = 'discover-rank-v2';
 export const DISCOVER_WINDOW_DAYS = 7;
 const LABEL_ORDER: Record<string, number> = { INVESTIGATE: 0, MONITOR: 1, WAIT: 2 };
 
@@ -23,16 +30,20 @@ export function rankCases(cases: any[], now: string, windowDays = DISCOVER_WINDO
     scored.sort((a, b) => (b.e.score ?? -1) - (a.e.score ?? -1) || String(b.c.createdAt).localeCompare(String(a.c.createdAt)));
     const { c, e } = scored[0];
     const v2 = c?.decision?.version === 'research-screen-v2';
+    const match = caseEventMatch(c);
     return {
+      eventMatch: { level: match.level, label: match.label, reason: match.reason, confirmed: match.confirmed },
       caseId: c.id, symbol, company: c?.identity?.name ?? null, headline: c?.event?.headline ?? '', url: c?.event?.url ?? null,
       source: c?.event?.source ?? null, publishedAt: c?.event?.publishedAt ?? null, assessedAt: c.createdAt,
       label: v2 ? c.conclusion : null, screenVersion: c?.decision?.version ?? null,
       score: e.score, band: e.band, coverage: e.coverage,
-      whyRanked: whyRanked(e),
+      whyRanked: match.level === 'name_conflict' ? `Listed last: ${match.reason}` : whyRanked(e),
       otherReports: list.length - 1,
     };
   });
   rows.sort((a, b) => {
+    const ca = a.eventMatch.level === 'name_conflict', cb = b.eventMatch.level === 'name_conflict';
+    if (ca !== cb) return ca ? 1 : -1;
     if ((a.score === null) !== (b.score === null)) return a.score === null ? 1 : -1;
     return (b.score ?? 0) - (a.score ?? 0)
       || (LABEL_ORDER[a.label ?? ''] ?? 3) - (LABEL_ORDER[b.label ?? ''] ?? 3)

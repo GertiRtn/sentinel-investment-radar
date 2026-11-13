@@ -148,7 +148,7 @@ export function buildEvidencePack(input: {
 
   const p = kase?.price;
   if (p?.status === 'indicative' && Number.isFinite(p.ratio)) items.push({ id: `V:pe:${p.quoteRawId ?? ''}:${p.accession ?? ''}`, kind: 'valuation', label: 'Indicative P/E (observed price ÷ reported EPS)', text: p.ratio.toFixed(1), value: p.ratio, display: p.ratio.toFixed(1), unit: 'ratio', currency: null, period: { start: p.periodStart ?? null, end: p.periodEnd }, form: '10-K',
-    source: { name: 'Sentinel: IEX midpoint ÷ SEC annual diluted EPS', url: sec(p.accession ?? null, cik), accession: p.accession ?? null, rawEventId: p.epsRawId ?? null },
+    source: { name: `Sentinel: ${p.priceLabel ?? 'IEX midpoint'} ÷ SEC annual diluted EPS`, url: sec(p.accession ?? null, cik), accession: p.accession ?? null, rawEventId: p.epsRawId ?? null },
     sourceTime: p.quoteTime ?? null, capturedAt: kase.createdAt ?? null, confidence: 'indicative', stale: null, shareable: false,
     note: 'An observed price ratio, not a valuation. A low P/E alone shows neither intrinsic value nor a margin of safety. Share basis and later splits are unverified.' });
   else missing.push(`Indicative P/E: ${p?.reason ?? 'not available'}`);

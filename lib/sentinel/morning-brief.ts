@@ -38,7 +38,7 @@ function money(v: number) {
 /** One supporting fact, always with its source; null when nothing reliable exists. */
 export function keyFact(c: BriefCase) {
   if (c?.price?.status === 'indicative' && Number.isFinite(c.price.ratio)) {
-    return fact('P/E', c.price.ratio.toFixed(1), `IEX midpoint ${time(c.price.quoteTime)} ÷ annual diluted EPS (year to ${c.price.periodEnd ?? 'unknown'})`);
+    return fact('P/E', c.price.ratio.toFixed(1), `${c.price.priceLabel ?? 'IEX midpoint'} ${c.price.basis === 'last_close' ? '(last close, not live)' : time(c.price.quoteTime)} ÷ annual diluted EPS (year to ${c.price.periodEnd ?? 'unknown'})`);
   }
   const rev = (c?.brief?.evidence ?? []).find((e: any) => e.label === 'Revenue' && typeof e.value === 'number');
   if (rev) return fact('Revenue', money(rev.value), `SEC filing, period ending ${rev.periodEnd ?? 'unknown'}`);

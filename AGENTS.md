@@ -32,7 +32,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
-## Current system (deployed v36, verified by reading and by `node --test tests/*.test.mjs`: 61/61 pass on 2026-11-12)
+## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 170/170 on 2026-11-13)
 
 - Server-side persistence on Cloudflare D1, raw captures in D1/R2 with SHA-256 dedup.
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
@@ -45,7 +45,10 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - Journal, thesis memos, kill criteria.
 - Practice v2 (`lib/sentinel/practice.ts`, `app/api/practice/route.ts`, `components/sentinel/practice.tsx`): $10,000 virtual; open/close priced by the server from a recorded IEX midpoint (never typed), SPY recorded at every trade as the position's benchmark; thesis, exit plan, kill condition and the user's own conviction 0–100 required; review prompts at 1 week / 1 month / 3 months; scorecard by evidence band and conviction band (median only from 5 trades); one `practice_mark` per UTC day from the hourly run. Gross returns. The old $50 manual ledger (`paper_trade`) is kept read-and-write under a fold.
 - Practice risk check (`lib/sentinel/practice-risk.ts` `practice-risk-v1`, `GET /api/practice-risk`, `components/sentinel/practice-risk.tsx`): on demand and read-only, virtual positions only. Concentration and coverage first; then a seeded historical bootstrap of whole shared trading days (10,000 paths, 20 sessions, 252-day lookback, at least 120 days required) giving VaR/ES at 95%, percentiles, volatility, correlation and illustrative stresses. Insufficient history → unavailable. Daily bars come from the shared archive `lib/sentinel/daily-bars.ts` (source `alpaca:iex:daily-bars:*`, reused 6 h), also used by the case sheet. Stores nothing, never trades, and is not part of the hourly run.
-- Discover ranking (`lib/sentinel/discover-rank.ts`, `discover-rank-v1`): last 7 days of cases, one row per symbol, highest evidence score first, with a "why here" line; research routing, not a return forecast (invariant 6). The raw feed is folded below.
+- Discover ranking (`lib/sentinel/discover-rank.ts`, `discover-rank-v2` since 2026-11-13): last 7 days of cases, one row per symbol, highest evidence score first, with a "why here" line; research routing, not a return forecast (invariant 6). v2 lists a probable company mismatch (`name_conflict`) last. The raw feed is folded below.
+- Event ↔ company match (`lib/sentinel/event-match.ts`, `event-match-v1`, 2026-11-13): whether the stored headline or provider summary names the SEC company. A provider ticker tag alone is `ticker_only`; the ticker's letters used as another name ("ams-OSRAM" tagged AMS) is `name_conflict`. Only `named_in_headline` is confirmed. Stored on new cases; older cases are read from their stored text.
+- Price basis (`lib/sentinel/last-close.ts`, `price-basis-v2`, 2026-11-13): the P/E uses an eligible live IEX midpoint, or, when none exists (off-hours quotes are stale and very wide), the last completed IEX daily close, at most 5 days old, archived and labelled (`price.basis`). The screen rules did not change. Never compare outcomes across bases without saying so.
+- Idea card (`lib/sentinel/idea-card.ts`, `idea-card-v1`): the top of the case sheet. Sentinel's rule-based view, uncertainty, why now, for, against, unknowns and fit with virtual Practice holdings. Deterministic; no model text, no upside or probability, no buy/sell wording.
 - Following monitor (`lib/sentinel/thesis-monitor.ts`, `GET /api/following`): per followed company, Broken / Weakening / Holding / Can't check / No thesis, from the owner's kill criteria only, plus what changed in the last 7 days (filings, news, criterion alerts, Sentinel cases). Unknown is never Holding.
 - Navigation (2026-11-12): main tabs Brief (home) / Discover / Following / Practice; the rest under a Library menu. Old tab names map via `TAB_ALIAS` in `app/page.tsx`.
 - Evidence score 0–100 (`evidence-score-v1`, see invariant 6): stored on every new discovery case with the quarterly revenue comparison it used; older cases are recomputed from their stored fields with the quarter unknown. The brief ranks strong cases and watch items by it.
@@ -68,6 +71,23 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 4. **Improved 2026-11-12 (twice):** `observeOutcomes` checks up to 8 (case, horizon) pairs per run within 20 s. Due pairs come from three light reads in one D1 batch (`dueOutcomePairs`: case ids with only symbol/cik, outcome keys, cooling-down attempts), not one correlated query per pair. Bars are fetched once per symbol per run and SPY once per run, so each raw payload is written once, not once per horizon. At most 400 of the oldest complete cases are scanned per run. Not yet verified against production D1.
 5. Capacity: ~250 headlines collected vs ≤6 assessed per run; the whole pipeline in one request is the likely cause of partial scans.
 6. From September: **fixed 2026-11-12** — replay now recomputes and compares (mismatch raises an operational alert); `evaluateEntity` passes an explicit memo; alerts disclose estimated values. **By design, not a bug:** effective tax rate (and so NOPAT/ROIC) is unavailable for loss years — unavailable beats wrong. **Decided 2026-11-12 (founder: keep both):** `consecutive_periods` counts fiscal years by default; a comparison may opt in to `"period":"quarter"` (revenue, net_income, operating_income, cfo, capex, eps_diluted only; anything else is unknown) and `"basis":"yoy_pct"` (vs the same quarter a year earlier). The unreported fiscal Q4 does not break a quarterly streak; any other gap is unknown. Following (`thesis-monitor-v2`): quarterly-only trips show as Weakening, annual or event trips as Broken.
+
+7. **Found and fixed 2026-11-13 for new cases:** off-hours, the IEX latest quote is stale and very wide, so no case assessed outside US market hours could get a P/E; all 75 screen-v2 cases on the live Site were WAIT. See price basis above. Stored cases are not rewritten. Manual Practice still shows an unknown value off-hours for the same reason.
+8. **Open:** `signal_log` has no (owner, kind, created_at) index, so most queries walk every row the owner has (about 6,000 added a day). Likely root of the D1 overload reports. Fix in its own PR: `CREATE INDEX signal_owner_kind_time ON signal_log(owner, kind, created_at)`.
+
+---
+
+## Automated Practice experiment (virtual only — added 2026-11-13)
+
+`lib/sentinel/auto-practice.ts` (pure rules, `auto-practice-v1`), `lib/sentinel/auto-practice-run.ts`, `app/api/auto-practice/route.ts`, `components/sentinel/auto-practice.tsx`.
+
+- The founder asked for it explicitly. It is the prospective validation invariant 7 requires before any buy/sell label; it is not such a label, not an alert and not advice.
+- **Off until the owner starts it** (`auto_practice_control`). Then one bounded step at the end of the hourly run, plus a manual check. Stopping means no new positions; open ones still close under the exit rule. A new start is a new experiment with its own ledger.
+- Rules (`AUTO_POLICY`, `AUTO_RULES_TEXT`): only cases assessed after the start; screen v2 INVESTIGATE + `security-identity-v2` ordinary share + `named_in_headline`; $1,000 per position, max 5, one per company, max 2 opens per check, oldest assessment first; fresh narrow IEX quotes for the stock and SPY (so market hours only); 96-hour entry window; 30-day time exit; 15 bp simulated cost per side; SPY pays the same costs.
+- **Changing a rule means a new version and a new experiment.** Never edit `AUTO_POLICY` for a running one.
+- Records are append-only: one `auto_practice_decision` per considered case (an open or a final skip with its reason), `auto_practice_close`, and `auto_practice_run` when a check changed something. Writes are conditional on the ledger row count, and ids derive from the case, so overlapping or retried runs cannot double-spend or double-open.
+- Separate from manual Practice (`practice_*` records are never read or written by it), from the screen, score, rankings and alerts. No broker, no orders, no model, no user conviction invented.
+- It proves nothing until enough trades close (`MIN_CLOSED_FOR_RECORD` = 20) and it is compared with the outcomes of all assessed cases.
 
 ---
 

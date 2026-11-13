@@ -5,7 +5,8 @@ const CACHE_MS=6*3600000;
 /**
  * Alpaca IEX daily bars (adjustment "all"), fetched on request only, archived append-only in raw_event
  * (deduplicated by content) and reused for 6 hours. Shared by the case sheet and the Practice risk check.
- * Never called by the hourly run.
+ * Since 2026-11-13 the hourly case assessment also uses it, only when a case has no eligible live quote
+ * (a 10-day window, at most 6 small requests per run); see last-close.ts.
  */
 export async function archivedDailyBars(ticker:string,start:string,end:string,c:{ALPACA_DATA_KEY_ID:string;ALPACA_DATA_SECRET:string}){
  const db=database(),source=`alpaca:iex:daily-bars:${ticker}:${start}:${end}`;
