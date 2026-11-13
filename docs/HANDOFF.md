@@ -412,3 +412,32 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 **Known limits of the experiment:** time exit only; oldest-first selection; fills at an IEX midpoint with a flat 15 bp cost per side; no dividends; needs market hours; one experiment at a time; `auto_practice_run` is written only when a check changed something.
 
 **Next, in order:** (1) separate small PR adding `CREATE INDEX signal_owner_kind_time ON signal_log(owner, kind, created_at)`, since most queries walk every owner row; (2) discovery capacity; (3) founder starts the experiment after publishing and reviews the first fills; (4) Practice value shows "unknown" off-hours for the same wide-quote reason; (5) outcomes grouped by `price.basis` and `eventMatch.level`.
+
+## 2026-11-13 (afternoon) — Claude Code: useful ideas on Brief and Discover, Practice layout, queue workload (founder brief "make Sentinel's ideas useful")
+
+**Baseline:** main 02b2915 (#29 merged and published); 170/170 tests.
+
+**Live Site, read-only (Claude in Chrome). No Practice record was changed.**
+- 13:23 UTC: experiment active since 12:51 UTC; no hourly run had happened since the start (last scan 12:21), so nothing had been considered. Cash $10,000, no positions, no skips.
+- 13:33 UTC: the 13:26 run was the first on the new version. It assessed 3 cases (not 6). **Last-close pricing works on real data:** Mastercard P/E 39.5 and Williams-Sonoma P/E 28.3, both `last_close`, both MONITOR, the first non-WAIT cases on screen v2. The experiment looked at those 3 cases; none met the rules, so nothing was opened, waiting or skipped. The market was closed (opens 14:30 UTC). Queue 2,241. Outcomes 0.
+- **Found from that run:** Williams-Sonoma's own earnings release ("Williams-Sonoma, Inc. Announces Third Quarter 2026 Earnings…", evidence 85, P/E 28.3) failed only rule R2 "direct company role". Cause: the headline rule matched "Williams", then saw "-Sonoma, Inc." instead of a verb. Fixed as `headline-relevance-v3`.
+- Not verified: any run during market hours; any fill; hourly-run errors (the MCP response is not visible from the browser).
+
+**Database workload (measured, `scripts/db-workload.mjs`, synthetic data shaped like production, local Miniflare D1):**
+- The dominant cost was the assessment queue pick: two correlated NOT EXISTS subqueries, run 6 times per hourly run. 805,177 rows read per call after one day of data, 11.3 million after a week (68 million per run). The Brief/Discover pending count used the same shape (6.6 million rows per page view at a week).
+- The proposed index `signal_log(owner, kind, created_at)` is **not the fix**: it cut that query's rows by 1.7× but SQLite chose a worse plan and it took 31 s instead of 0.9 s at a week of data. It does help the small unbounded reads (ledger, practice records). It is not shipped; it needs testing against every remaining query first.
+- Shipped instead: `discoveryQueue()` reads candidates, cases and attempts for the last 96 hours once per run and matches in memory (about 30,000 rows per run at a week of data). Same pick order (existing order tests pass unchanged). The pending count on Brief and Discover uses it. **Behaviour change:** reports older than 96 hours are no longer assessed, and the pending count covers 96 hours. The experiment ledger is one read instead of four.
+- No migration in this PR. Append-only triggers untouched (36).
+
+**Built (branch `useful-ideas-practice-ux`):**
+- `lib/sentinel/idea-select.ts` (`idea-select-v1`), `app/api/ideas/route.ts`, `components/sentinel/idea-list.tsx`: "Where to look first" at the top of Brief and Discover. Up to five companies: cases that meet the rules first, then the closest (evidence ≥ 60, not a mismatch, not analyst-only), each with identity, what happened and when, why look, SEC changes with period and filing link, price before/after vs SPY (loaded per card from archived daily bars), P/E with its basis, strongest counterpoint, gaps and next check. When nothing qualifies it says why (counts and the most common gap) and links to all assessed cases.
+- `lib/sentinel/case-idea.ts`: shared by `/api/case-context` and `/api/ideas`.
+- `lib/sentinel/news-assessment.ts` → `headline-relevance-v3` (see above). New cases only. **More cases will pass R2.**
+- Practice: the automated experiment is first, with a "Last check" line (every check is now logged as `auto_practice_run`), US market open/closed, and a "research case" link on every position, waiting item and skip. Manual trades sit under their own heading. No rule, accounting or record format changed.
+- `docs/INVESTMENT-ROADMAP.md`.
+
+**Verified:** 175/175 tests (170 before). Changed on purpose: `remaining` is a number again (was null), the run-log count (every check logged), the relevance version string. New: `tests/idea-select.test.mjs` (4), a relevance-v3 test, and ideas/queue-window assertions in the Miniflare end-to-end test. `tsc --noEmit` clean, `pnpm build` OK.
+
+**Not verified:** browser rendering; the ideas page against production data and real bars; production rows read (D1 metrics are not visible from here); whether Sites applies new files under `drizzle/` automatically.
+
+**Next:** (1) after publishing, check the 15:26 and 16:26 UTC runs for the first "meets research rules" case and the first fill; (2) confirm events from SEC 8-K/10-Q filings; (3) split the hourly run and raise the batch above 6; (4) the index, tested against all queries, as its own PR; (5) outcomes table by label, band, price basis and event type once results arrive.
