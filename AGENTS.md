@@ -32,13 +32,14 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
-## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 183/183 on 2026-11-13)
+## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 192/192 on 2026-11-13)
 
 - Server-side persistence on Cloudflare D1, raw captures in D1/R2 with SHA-256 dedup.
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
 - Discovery: Alpaca market news (`lib/sentinel/discovery-collector.ts`), up to 5×50 items per run, checkpointed.
 - Cases: `lib/sentinel/discovery-case.ts`, up to 6 per run with a 35 s budget, one slot in three oldest-first. Only `topic match` candidates are assessed. Since 2026-11-13 the queue (`discoveryQueue`) is the last 96 hours, read once per run and matched in memory; older reports are not assessed. The direct-role rule is `headline-relevance-v3` (hyphenated names, legal suffixes and exchange tags no longer hide the verb).
 - Idea list (`lib/sentinel/idea-select.ts` `idea-select-v1`, `GET /api/ideas`, `components/sentinel/idea-list.tsx`): "Where to look first" on Brief and Discover. Rule-meeting cases, then the closest ones with what they lack, or an explanation when nothing qualifies. Research routing only (invariant 6).
+- Hourly refresh stages (`lib/sentinel/pipeline.ts`, `pipeline-v1`, 2026-11-13): the MCP tool reports a status and elapsed time per stage, takes an optional `stages` list (default all), sets `isError` when any stage failed, and appends a `pipeline_run` record (read it with `GET /api/pipeline`). Filings stop starting new companies after 30 s (protective cap, unmeasured). The assessment batch is still 6 cases / 35 s; do not raise it without stage times from the run records.
 - Security identity (`lib/sentinel/security-identity.ts`, `security-identity-v2` since 2026-11-12): active US equity + exact symbol + one SEC ticker + no other-instrument words in the name (ADR/ADS, units, warrants, rights, preferred, funds, trusts, ETFs, notes, named share classes). v1 also required the words "Common Stock", which rejected most NYSE names. Stored cases keep their v1 result.
 - Screen: `researchDecision()` in `lib/sentinel/price-assessment.ts` (`research-screen-v1`).
 - Indicative P/E from an IEX midpoint and reported annual diluted EPS; cash-flow scenarios (fixed 12% discount, ±5% growth, 5 years).
