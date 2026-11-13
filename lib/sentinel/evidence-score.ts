@@ -108,7 +108,7 @@ export function evidenceScore(input: {
   // E3 — valuation is in a sane range.
   const ratio = input.price?.status === 'indicative' ? input.price.ratio : null;
   if (typeof ratio !== 'number' || !Number.isFinite(ratio)) add('E3', 'Valuation sanity (P/E 0–30)', 15, 'unknown', input.price?.reason ?? 'No eligible P/E.', null);
-  else add('E3', 'Valuation sanity (P/E 0–30)', 15, ratio > 0 && ratio <= 30 ? 'pass' : 'fail', `P/E ${ratio.toFixed(1)}`, `IEX midpoint ÷ annual diluted EPS (year to ${input.price.periodEnd ?? 'unknown'})`);
+  else add('E3', 'Valuation sanity (P/E 0–30)', 15, ratio > 0 && ratio <= 30 ? 'pass' : 'fail', `P/E ${ratio.toFixed(1)}`, `${input.price.priceLabel ?? 'IEX midpoint'} ÷ annual diluted EPS (year to ${input.price.periodEnd ?? 'unknown'})`);
 
   // E4 — latest quarterly release: revenue up on the same quarter last year.
   const q = input.quarterlyRevenue;

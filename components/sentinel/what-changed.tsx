@@ -51,6 +51,46 @@ function PriceWindow({ w, symbol }: { w: any; symbol: string }) {
   );
 }
 
+const TONE: Record<string, string> = { research: "border-sky-400/40 bg-sky-400/10", watch: "border-border bg-muted/40", wait: "border-border bg-muted/40", doubt: "border-amber-400/50 bg-amber-400/10" };
+const usd0 = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
+function Lines({ items, sign }: { items: any[]; sign: string }) {
+  if (!items.length) return <p className="text-xs text-muted-foreground">Nothing supported by the stored records.</p>;
+  return <ul className="space-y-1 text-xs">{items.map((l: any, i: number) => <li key={i}><Tag kind={l.kind} /><span className={sign === "+" ? "text-sky-300" : "text-amber-300"}>{sign}</span> {l.text}{l.detail && <span className="text-muted-foreground"> — {l.detail}</span>}</li>)}</ul>;
+}
+/* The idea in brief: Sentinel's rule-based view, why now, for, against, missing, and fit with Practice holdings. */
+export function IdeaCard({ idea }: { idea: any }) {
+  const f = idea.fit, m = idea.eventMatch;
+  return (
+    <div className="space-y-3 rounded-lg border border-border p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold">The idea in brief</h4><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">{idea.ideaType.type} · rules only, no AI</span></div>
+      <div className={`rounded-md border p-2.5 ${TONE[idea.view.tone] ?? TONE.wait}`}>
+        <div className="font-semibold">Sentinel’s view: {idea.view.label}</div>
+        <p className="mt-0.5 text-xs">{idea.view.text}</p>
+        <p className="mt-1 text-xs text-muted-foreground">How sure: {idea.view.uncertainty}</p>
+      </div>
+      <div className="grid gap-2 text-xs sm:grid-cols-2">
+        <div><span className="text-muted-foreground">Security:</span> {idea.security.text}</div>
+        <div><span className="text-muted-foreground">Is the news about this company?</span> <span className={m.confirmed ? "" : "text-amber-200"}>{m.label}</span>{!m.confirmed && <span className="text-muted-foreground"> — {m.reason}</span>}</div>
+      </div>
+      <section><h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Why now</h5>
+        <ul className="space-y-1 text-xs">{idea.whyNow.map((l: any, i: number) => <li key={i}><Tag kind={l.kind} />{l.text}{l.detail && <span className="text-muted-foreground"> — {l.detail}</span>}</li>)}</ul></section>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <section><h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">What supports it</h5><Lines items={idea.evidenceFor} sign="+" /></section>
+        <section><h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">What could be wrong</h5><Lines items={idea.counter} sign="−" /></section>
+      </div>
+      <section><h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Fit with your portfolio</h5>
+        {f.status !== "known" ? <Unavailable>{f.reason}</Unavailable> : <p className="text-xs">
+          {f.heldInPractice ? "You already hold this in Practice. " : "Not in your Practice portfolio. "}{f.heldInExperiment ? "The automated experiment holds it. " : ""}
+          {f.openPositions} open position{f.openPositions === 1 ? "" : "s"}, {usd0(f.cashCents)} virtual cash.{f.weightIfAddedPct !== null ? ` A ${usd0(f.standardPositionCents)} position would be about ${f.weightIfAddedPct.toFixed(0)}% of the portfolio.` : ""}
+          <span className="text-muted-foreground"> {f.note}</span></p>}
+      </section>
+      <details className="text-xs"><summary className="cursor-pointer text-muted-foreground">What Sentinel does not know ({idea.missing.length})</summary>
+        <ul className="mt-1 list-disc pl-5 text-muted-foreground">{idea.missing.map((x: string) => <li key={x}>{x}</li>)}</ul></details>
+      <p className="text-[10px] text-muted-foreground">{idea.ideaType.horizon} {idea.ideaType.note} {idea.view.basis}</p>
+    </div>
+  );
+}
+
 export function WhatChanged({ caseId, symbol }: { caseId: string; symbol: string }) {
   const [d, setD] = useState<any>(null), [error, setError] = useState(""), [loadingPrice, setLoadingPrice] = useState(false);
   const load = useCallback(async (prices: boolean) => {
@@ -63,7 +103,8 @@ export function WhatChanged({ caseId, symbol }: { caseId: string; symbol: string
   if (error) return <div className="rounded-lg border border-border p-3"><h4 className="mb-1 font-semibold">What changed?</h4><Unavailable>{error}</Unavailable></div>;
   if (!d) return <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">Loading what changed…</div>;
   const ev = d.event, p = d.price, v = d.valuation;
-  return (
+  return (<>
+    {d.idea && <IdeaCard idea={d.idea} />}
     <div className="space-y-4 rounded-lg border border-border p-3 text-sm">
       <h4 className="font-semibold">What changed?</h4>
 
@@ -105,5 +146,5 @@ export function WhatChanged({ caseId, symbol }: { caseId: string; symbol: string
         <ul className="mt-2 list-disc pl-5">{d.nextChecks.map((m: string) => <li key={m}>Check: {m}</li>)}</ul>
       </details>
     </div>
-  );
+  </>);
 }

@@ -5,6 +5,11 @@ import {companyFile} from '@/lib/sentinel/edgar';
 import {buildEvidencePack} from '@/lib/sentinel/evidence-pack';
 import {whatChanged,priceContext} from '@/lib/sentinel/case-context';
 import {archivedDailyBars as bars} from '@/lib/sentinel/daily-bars';
+import {caseEvidenceScore} from '@/lib/sentinel/evidence-score';
+import {caseEventMatch} from '@/lib/sentinel/event-match';
+import {ideaCard,portfolioFit} from '@/lib/sentinel/idea-card';
+import {practiceState,type PracticeTrade} from '@/lib/sentinel/practice';
+import {AUTO_POLICY} from '@/lib/sentinel/auto-practice';
 export const dynamic='force-dynamic';
 
 
@@ -24,8 +29,17 @@ export async function GET(request:Request){try{
  if(kase.identity?.cik){try{const file=await companyFile('sec:'+kase.identity.cik,asOf,'recorded',owner);figures=file.figures;quarterly=file.quarterlyFigures;}catch{notes.push('SEC figures could not be loaded.');}}
  const pack=buildEvidencePack({caseId,kase,figures,quarterlyFigures:quarterly,asOf,recordedBy:asOf});pack.missing.push(...notes);
  const context=whatChanged(pack,kase);
- if(url.searchParams.get('prices')!=='1')return json({...context,price:{status:'not_loaded',reason:'Price context loads only when you ask for it.'}});
- return json({...context,price:await loadPrice(kase)});
+ // Idea card: the same stored records, arranged as a possible idea. Holdings are the owner's virtual Practice positions only.
+ let fit;try{
+  const rows=await db.prepare("SELECT kind,body FROM signal_log WHERE owner=? AND kind IN ('practice_trade','auto_practice_decision','auto_practice_close') ORDER BY created_at,id").bind(owner).all<{kind:string;body:string}>();
+  const trades:PracticeTrade[]=[],autoOpen=new Map<string,string>();
+  for(const r of rows.results){const b=JSON.parse(r.body);if(r.kind==='practice_trade')trades.push(b);else if(r.kind==='auto_practice_decision'&&b.kind==='open')autoOpen.set(b.positionId,b.symbol);else if(r.kind==='auto_practice_close')autoOpen.delete(b.positionId);}
+  const st=practiceState({trades,reviews:[],marks:[],live:{},now:new Date().toISOString()});
+  fit=portfolioFit({symbol:String(kase.symbol??''),manual:{open:st.open.map(p=>({symbol:p.symbol,amountCents:p.amountCents})),cashCents:st.cashCents,startCents:st.startCents},autoOpenSymbols:[...autoOpen.values()],standardPositionCents:AUTO_POLICY.positionCents});
+ }catch{fit=portfolioFit({symbol:String(kase.symbol??''),manual:null,autoOpenSymbols:[],standardPositionCents:AUTO_POLICY.positionCents});}
+ const idea=ideaCard({kase,context,score:caseEvidenceScore(kase),match:caseEventMatch(kase),fit});
+ if(url.searchParams.get('prices')!=='1')return json({...context,idea,price:{status:'not_loaded',reason:'Price context loads only when you ask for it.'}});
+ return json({...context,idea,price:await loadPrice(kase)});
 }catch(e){return failure(e)}}
 
 async function loadPrice(kase:any){
