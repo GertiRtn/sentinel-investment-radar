@@ -78,11 +78,12 @@ export async function assessDiscoveryQueue(owner:string,email:string,oldestFirst
 }
 
 /** Process a bounded batch, reserving one slot for old work to limit starvation. */
-export async function assessDiscoveryBatch(owner:string,email:string){
- const started=Date.now(),items=[];
+export async function assessDiscoveryBatch(owner:string,email:string,opts:{limit?:number;budgetMs?:number}={}){
+ // Defaults are the long-standing 6 cases / 35 s. A caller may lower them (tests do); nothing raises them without a measurement.
+ const limit=opts.limit??6,budgetMs=opts.budgetMs??35000,started=Date.now(),items:any[]=[];let budgetExhausted=false;
  const queue=await discoveryQueue(owner),list=queue.pending;
- for(let i=0;i<6;i++){if(i>0&&Date.now()-started>=35000)break;const result=await assessDiscoveryQueue(owner,email,i%3===2,list);if(result.status==='idle')break;items.push(result);}
+ for(let i=0;i<limit;i++){if(i>0&&Date.now()-started>=budgetMs){budgetExhausted=true;break;}const t0=Date.now();const result:any=await assessDiscoveryQueue(owner,email,i%3===2,list);if(result.status==='idle')break;items.push({...result,elapsedMs:Date.now()-t0});}
  // Evaluation only: runs after every case in this batch has been created, so it cannot change what was assessed.
  let shadow:any;try{shadow=await shadowReadCases(owner,items)}catch{shadow={status:'failed',attempted:0}}
- return {status:items.some(x=>x.status==='failed')?'partial':items.length?'complete':'idle',items,shadow,remaining:list.length,coolingDown:queue.coolingDown,queueWindowHours:queue.windowHours,limit:6,timeBudgetMs:35000,notice:`Queue covers the last ${queue.windowHours} hours; older reports are not assessed. Triage uses headline topics and age, not estimated investment returns.`};
+ return {status:items.some(x=>x.status==='failed')?'partial':items.length?'complete':'idle',items,shadow,remaining:list.length,coolingDown:queue.coolingDown,queueWindowHours:queue.windowHours,limit,timeBudgetMs:budgetMs,budgetExhausted,elapsedMs:Date.now()-started,notice:`Queue covers the last ${queue.windowHours} hours; older reports are not assessed. Triage uses headline topics and age, not estimated investment returns.`};
 }

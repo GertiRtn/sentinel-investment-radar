@@ -468,3 +468,32 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 **Limits of v1:** observations come from annual and quarterly totals only (no segments, margins or guidance); "company announcement" is read from headline wording, not confirmed against a filing; profitability and cash flow use the latest annual figures; expectations are always unknown.
 
 **Next:** confirm the event against the company's 8-K/10-Q; add margins and the newly filed quarter; verify the first market-hours check and fill on the live Site.
+
+## 2026-11-13 (evening) — Claude Code: per-stage status for the hourly refresh (founder brief "discovery throughput and event verification", Goal 1 only)
+
+**Baseline:** main 2322816 (#31 merged); 183/183 tests. Branch `pipeline-stages`. Goal 2 (event verification against SEC filings) is deliberately NOT in this PR; it is a separate, later piece of work.
+
+**What the pipeline actually is (read from `app/mcp/route.ts`):** one external call runs, in order and in one request: SEC filings (≤5 companies, no time budget before this PR) → saved-company news (≤20 companies, no budget) → discovery collection (≤5 pages × 50, checkpointed) → assessment (≤6 cases, 35 s) → outcomes (≤8 pairs, 20 s) → Practice mark → automated experiment step. Each stage was already inside its own try/catch, so one stage throwing did not stop the others.
+
+**Defects found:**
+1. `isError` reflected only the filings results. A failed or partial news, discovery, assessment, outcomes or experiment stage still returned a clean success. (The old test even asserted `isError=false` while every news check had failed.)
+2. No stage reported its elapsed time, and nothing recorded a run, so stage times and failures could not be read afterwards. That is why production behaviour is still unknown.
+3. Filings and news had no time bound, so a slow SEC could consume the request before assessment started.
+
+**Built (`pipeline-v1`):**
+- `lib/sentinel/pipeline.ts` (pure): stage list, `parseStages`, `statusOf` (an unrecognised result shape is `failed`, never a pass), `runStage` (times a stage, turns an exception into a `failed` record), `summarise`. Statuses: complete / partial / idle / failed / skipped. Any failed stage means the run is not complete; partial (work remains) is not an error.
+- `app/mcp/route.ts`: the hourly tool takes an optional `stages` list (default = all, original order, original response keys all kept). New `pipeline` object in the response: overall status, failed/partial/skipped lists, per-stage `{status, elapsedMs, message}`. `isError` is now true when any stage failed. The filings stage stops starting new companies after 30 s (a protective cap, NOT a measured value; deferred companies are the oldest-checked, so they go first next run) and reports `deferred`.
+- Each run appends one `pipeline_run` record (no migration: it is just a new `kind`; the append-only triggers cover it). `GET /api/pipeline` returns the last 12 runs for the owner. No contact email or secret is stored.
+- `assessDiscoveryBatch(owner, email, {limit, budgetMs})`: defaults unchanged (6 cases, 35 s). It now reports `budgetExhausted`, `elapsedMs` and per-case `elapsedMs`. **The batch size was not raised**: no measurement supports it.
+
+**Deliberate behaviour change:** one existing assertion in `tests/work-order03.test.mjs` was changed. It expected `isError=false` while every news check had failed; it now expects `isError=true` and the failed stage named. The ChatGPT scheduled task will therefore see `isError` more often (any failed stage). That is the intent.
+
+**Verified:** 192/192 tests (183 before + 9 new: 6 pure in `tests/pipeline.test.mjs`; 3 in `tests/work-order03.test.mjs` covering budget exhaustion with resume and no duplicate cases, two overlapping runs creating no duplicate case, and the stage selector, run record, owner isolation and append-only protection). `tsc` clean, build OK. Case ids are derived from the candidate and inserted with `INSERT OR IGNORE`, which is what makes overlap and retry safe.
+
+**Measured on synthetic data (`scripts/db-workload.mjs 7000`, local Miniflare; NOT production):** at 7,395 `signal_log` rows (2.3 days) one full run reads about 62,700 rows by the current queries: queue 17,800 (bounded by the 96-hour window), Practice records 7,400 and the experiment ledger 4 × 7,400 (both scan the owner's whole history, so they grow with all data), experiment candidates 7,700. With `signal_log(owner, kind, created_at)` the same run reads about 17,800: the ledger reads fall to a few rows, and the index no longer slows anything measured now that the old queue query is gone. An assessment-only run reads only the queue (~17,800 at this size, bounded by the window). **The index is a candidate for its own PR** (it needs a migration and a re-test against every query); it was not added here.
+
+**Cannot be measured from here, so not claimed:** per-stage wall time against real SEC / Alpaca providers, the platform's request time limit, production row reads, whether the queue rewrite helped. The new run records are what will show stage times after a few hourly runs: read `GET /api/pipeline`.
+
+**Throughput:** code alone does not raise it. Capacity is about 6 cases per run, and the queue is thousands. The practical lever is a **second ChatGPT scheduled task** that calls the same tool with `{"stages":["assessment"]}` (every 30 minutes suggested: about 17,800 rows per run at the test size, so roughly 0.85M rows a day; every 15 minutes doubles that). Nothing was created or changed in the scheduled tasks. The existing hourly task keeps working unchanged. The Cloudflare free D1 allowance (5M rows read per day, from general knowledge) has NOT been checked for the Sites platform.
+
+**Next:** (1) after publishing and a few hourly runs, read `/api/pipeline` and choose the batch size and schedule from the real stage times; (2) the kind index as its own PR; (3) Goal 2, event verification from SEC 8-K/10-Q text, as a separate PR.
