@@ -39,7 +39,7 @@ function matchStatus(m: EventMatch) {
 function eventType(kase: any) {
   const topics: string[] = kase?.event?.analysis?.topics ?? [], role = kase?.identity?.relevance;
   if (topics.length && topics.every(t => t === 'Analyst opinion')) return { type: 'analyst_opinion' as const, label: 'Analyst opinion', text: 'The headline reports an analyst’s view (a rating or price-target change). It is an opinion about the company, not something the company announced.' };
-  if (role?.level === 'direct_candidate' && role.role === 'possible event subject' && topics.some(t => t !== 'Analyst opinion')) return { type: 'company_report' as const, label: 'Reads as a company announcement', text: 'The headline wording has the company itself reporting or announcing something. Sentinel has not checked it against a company filing.' };
+  if (role?.level === 'direct_candidate' && role.role === 'possible event subject' && topics.some(t => t !== 'Analyst opinion')) return { type: 'company_report' as const, label: 'Reads as a company announcement', text: 'The headline wording has the company itself reporting or announcing something. Wording is not proof: see Event evidence for whether a company filing supports it.' };
   if (role?.level === 'direct_candidate') return { type: 'about_company' as const, label: 'Report about the company', text: 'The headline has something happening to the company (for example a lawsuit or an offer). The source of the claim is the news provider, not the company.' };
   return { type: 'unclear' as const, label: 'Kind of report unclear', text: 'The stored headline does not show whether this is a company announcement, an opinion or a mention.' };
 }
