@@ -7,8 +7,8 @@ import {AUTO_POLICY,AUTO_VERSION,AUTO_RULES_TEXT,planAuto,autoState,currentExper
  * Runner for the automated Practice experiment (virtual money only; see auto-practice.ts for the rules).
  *
  * Records are append-only signal_log rows: auto_practice_control (start/stop), auto_practice_decision
- * (one per considered case: an open or a final skip), auto_practice_close and auto_practice_run (a summary,
- * written only when a run changed something). Every ledger write is one conditional insert on the ledger
+ * (one per considered case: an open or a final skip), auto_practice_close and auto_practice_run (a summary of
+ * every check, so the last check and its result are always known). Every ledger write is one conditional insert on the ledger
  * row count, so two overlapping runs cannot both spend the same cash or slot: the loser writes nothing and
  * the next run plans again from the stored ledger. Ids are derived from the case, so a retry cannot open
  * the same case twice. Prices are recorded IEX quotes fetched by the server; nothing is typed or estimated.
@@ -17,14 +17,11 @@ import {AUTO_POLICY,AUTO_VERSION,AUTO_RULES_TEXT,planAuto,autoState,currentExper
 const MAX_QUOTES=8,MAX_LIVE=6,LEDGER_COUNT="(SELECT COUNT(*) FROM signal_log WHERE owner=? AND kind IN ('auto_practice_decision','auto_practice_close'))";
 
 async function ledger(owner:string){
- const db=database(),[c,d,x,r]=await db.batch([
-  db.prepare("SELECT body FROM signal_log WHERE owner=? AND kind='auto_practice_control' ORDER BY created_at,id").bind(owner),
-  db.prepare("SELECT body FROM signal_log WHERE owner=? AND kind='auto_practice_decision' ORDER BY created_at,id").bind(owner),
-  db.prepare("SELECT body FROM signal_log WHERE owner=? AND kind='auto_practice_close' ORDER BY created_at,id").bind(owner),
-  db.prepare("SELECT body FROM signal_log WHERE owner=? AND kind='auto_practice_run' ORDER BY created_at DESC,id DESC LIMIT 1").bind(owner),
- ]);
- const parse=<T,>(rows:any):T[]=>(rows.results as {body:string}[]).map(v=>JSON.parse(v.body));
- return {controls:parse<Control>(c),decisions:parse<DecisionRecord>(d),closes:parse<CloseRecord>(x),lastRun:parse<any>(r)[0]??null};
+ // One pass over the owner's rows for all four record kinds (it was four passes; see scripts/db-workload.mjs).
+ const rows=await database().prepare("SELECT kind,body FROM signal_log WHERE owner=? AND kind IN ('auto_practice_control','auto_practice_decision','auto_practice_close','auto_practice_run') ORDER BY created_at,id").bind(owner).all<{kind:string;body:string}>();
+ const controls:Control[]=[],decisions:DecisionRecord[]=[],closes:CloseRecord[]=[];let lastRun:any=null;
+ for(const r of rows.results){const b=JSON.parse(r.body);if(r.kind==='auto_practice_control')controls.push(b);else if(r.kind==='auto_practice_decision')decisions.push(b);else if(r.kind==='auto_practice_close')closes.push(b);else lastRun=b;}
+ return {controls,decisions,closes,lastRun};
 }
 
 /** Cases assessed since the experiment started and still young enough to act on. Only the fields the rules need. */
@@ -69,7 +66,7 @@ export async function runAutoPractice(owner:string,trigger:'hourly'|'manual'){
  for(const d of [...plan.opens,...plan.skips]){const id='auto-decision:'+await hash(JSON.stringify([owner,exp.experimentId,d.caseId]));if(await append(id,'auto_practice_decision',d.symbol,{...d,version:AUTO_VERSION,experimentId:exp.experimentId,...(d.kind==='open'?{positionId:id}:{}),at:now}))(d.kind==='open'?opened:skipped).push(d.symbol);}
  const summary={version:AUTO_VERSION,experimentId:exp.experimentId,at:now,trigger,opened,closed:closedNow,skipped,waiting:plan.waiting.slice(0,20),counts:plan.counts,quotesFetched:Object.keys(prices).length,conflict,
   note:conflict?'Another check changed the ledger at the same time; the rest was left for the next check.':null};
- if(opened.length||closedNow.length||skipped.length)await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'auto_practice_run',NULL,?)").bind(crypto.randomUUID(),owner,now,JSON.stringify(summary)).run();
+ await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'auto_practice_run',NULL,?)").bind(crypto.randomUUID(),owner,now,JSON.stringify(summary)).run();
  return {status:conflict?'partial' as const:'complete' as const,...summary};
 }
 

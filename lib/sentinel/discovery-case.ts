@@ -16,11 +16,44 @@ import {env} from 'cloudflare:workers';
 async function lastCloseFor(symbol:string,at:string){
  try{const c=env as unknown as {ALPACA_DATA_KEY_ID?:string;ALPACA_DATA_SECRET?:string};if(!c.ALPACA_DATA_KEY_ID||!c.ALPACA_DATA_SECRET)return null;const day=86400000,bars=await archivedDailyBars(symbol,new Date(Date.parse(at)-10*day).toISOString().slice(0,10),at.slice(0,10),c as any);return closeFromBars(bars.payload,symbol,at,bars.rawId);}catch{return null}
 }
-/** Select one unassessed provider-tagged symbol; prioritisation is research routing, not return prediction. */
-export async function assessDiscoveryQueue(owner:string,email:string,oldestFirst=false){
- const db=database();
- const row=await db.prepare(`SELECT s.id,s.body,j.value symbol FROM signal_log s, json_each(s.body,'$.symbols') j WHERE s.owner=? AND s.kind='discovery_candidate' AND json_extract(s.body,'$.priority')='topic match' AND NOT EXISTS (SELECT 1 FROM signal_log a WHERE a.owner=s.owner AND a.kind='discovery_attempt' AND json_extract(a.body,'$.candidateId')=s.id AND json_extract(a.body,'$.symbol')=j.value AND a.created_at>?) AND NOT EXISTS (SELECT 1 FROM signal_log c WHERE c.owner=s.owner AND c.kind='discovery_case' AND json_extract(c.body,'$.candidateId')=s.id AND json_extract(c.body,'$.symbol')=j.value) ORDER BY CASE WHEN ?=1 THEN 0 WHEN json_array_length(s.body,'$.analysis.topics')=1 AND json_extract(s.body,'$.analysis.topics[0]')='Analyst opinion' THEN 2 WHEN json_extract(s.body,'$.analysis.topics') LIKE '%Earnings or financial results%' OR json_extract(s.body,'$.analysis.topics') LIKE '%Regulation or legal matter%' OR json_extract(s.body,'$.analysis.topics') LIKE '%Acquisition or transaction%' THEN 0 ELSE 1 END, CASE WHEN ?=1 THEN s.created_at END ASC, CASE WHEN ?=0 THEN s.created_at END DESC,s.id ASC,j.key ASC LIMIT 1`).bind(owner,new Date(Date.now()-6*3600000).toISOString(),oldestFirst?1:0,oldestFirst?1:0,oldestFirst?1:0).first<{id:string;body:string;symbol:string}>();
- if(!row)return {status:'idle',message:'No unassessed topic-matched symbols in the queue.'};
+export const QUEUE_WINDOW_HOURS=96;
+export type QueueItem={id:string;createdAt:string;symbol:string;key:number;topics:string};
+const MATERIAL=['Earnings or financial results','Regulation or legal matter','Acquisition or transaction'];
+const queueClass=(q:QueueItem)=>{let t:unknown;try{t=JSON.parse(q.topics||'[]')}catch{t=[]}const topics=Array.isArray(t)?t:[];return topics.length===1&&topics[0]==='Analyst opinion'?2:MATERIAL.some(m=>topics.includes(m))?0:1;};
+/** Same order the single SQL query used: event class, then newest first (or oldest first for the reserved slot), then id and tag position. */
+export function orderQueue(items:QueueItem[],oldestFirst:boolean){
+ return [...items].sort((a,b)=>(oldestFirst?0:queueClass(a)-queueClass(b))||(oldestFirst?a.createdAt.localeCompare(b.createdAt):b.createdAt.localeCompare(a.createdAt))||a.id.localeCompare(b.id)||a.key-b.key);
+}
+/**
+ * The assessment queue: topic-matched (report, symbol) pairs from the last QUEUE_WINDOW_HOURS with no case yet.
+ *
+ * Until 2026-11-13 one SQL statement did this with two correlated NOT EXISTS subqueries, six times per run. Measured
+ * on representative data (scripts/db-workload.mjs) each call read about (queued pairs) x (all cases + every row of
+ * the last six hours): 805,000 rows per call after ONE day of data, growing with the square of the backlog. That was
+ * the main database load. Now: three plain range reads over the window in one batch, matched in memory, once per run.
+ * Reports older than the window are no longer assessed; for event-driven research they are stale.
+ * `coolingDown` pairs failed in the last six hours and are retried later, as before.
+ */
+export async function discoveryQueue(owner:string,nowMs=Date.now()){
+ const db=database(),since=new Date(nowMs-QUEUE_WINDOW_HOURS*3600000).toISOString(),cooldown=new Date(nowMs-6*3600000).toISOString();
+ const [cands,cases,attempts]=await db.batch([
+  db.prepare("SELECT s.id,s.created_at,j.value AS symbol,j.key AS k,json_extract(s.body,'$.analysis.topics') AS topics FROM signal_log s, json_each(s.body,'$.symbols') j WHERE s.owner=? AND s.created_at>? AND s.kind='discovery_candidate' AND json_extract(s.body,'$.priority')='topic match'").bind(owner,since),
+  db.prepare("SELECT json_extract(body,'$.candidateId') AS c,json_extract(body,'$.symbol') AS s FROM signal_log WHERE owner=? AND created_at>? AND kind='discovery_case'").bind(owner,since),
+  db.prepare("SELECT json_extract(body,'$.candidateId') AS c,json_extract(body,'$.symbol') AS s FROM signal_log WHERE owner=? AND created_at>? AND kind='discovery_attempt'").bind(owner,cooldown),
+ ]);
+ const key=(c:unknown,s:unknown)=>String(c)+'|'+String(s),done=new Set((cases.results as any[]).map(r=>key(r.c,r.s))),cooling=new Set((attempts.results as any[]).map(r=>key(r.c,r.s)));
+ const pending:QueueItem[]=[];let coolingDown=0;
+ for(const r of cands.results as any[]){const k=key(r.id,r.symbol);if(done.has(k))continue;if(cooling.has(k)){coolingDown++;continue;}pending.push({id:r.id,createdAt:r.created_at,symbol:String(r.symbol),key:Number(r.k)||0,topics:typeof r.topics==='string'?r.topics:'[]'});}
+ return {pending,coolingDown,windowHours:QUEUE_WINDOW_HOURS};
+}
+/** Assess one queued (report, symbol) pair; prioritisation is research routing, not return prediction. `queue` lets a batch load the queue once. */
+export async function assessDiscoveryQueue(owner:string,email:string,oldestFirst=false,queue?:QueueItem[]){
+ const db=database(),list=queue??(await discoveryQueue(owner)).pending,pick=orderQueue(list,oldestFirst)[0];
+ if(!pick)return {status:'idle',message:'No unassessed topic-matched symbols in the queue.'};
+ if(queue)queue.splice(queue.indexOf(pick),1);
+ const stored=await db.prepare("SELECT body FROM signal_log WHERE id=? AND owner=? AND kind='discovery_candidate'").bind(pick.id,owner).first<{body:string}>();
+ if(!stored)return {status:'idle',message:'No unassessed topic-matched symbols in the queue.'};
+ const row={id:pick.id,body:stored.body,symbol:pick.symbol};
  const event=JSON.parse(row.body),symbol=row.symbol,at=iso();let identity:any=null,brief:any=null,quote:any=null,security:any={status:'unverified',reason:'Security details unavailable.'},price:any={status:'unavailable',reason:'Price assessment unavailable.'},valuation:any={status:'unavailable',reason:'Company financial evidence is unavailable.'};const missing:string[]=[];let status='complete',quarterlyRevenue:any=null;
  try{
   const resolved=await resolveIdentifier(symbol,email);
@@ -47,8 +80,9 @@ export async function assessDiscoveryQueue(owner:string,email:string,oldestFirst
 /** Process a bounded batch, reserving one slot for old work to limit starvation. */
 export async function assessDiscoveryBatch(owner:string,email:string){
  const started=Date.now(),items=[];
- for(let i=0;i<6;i++){if(i>0&&Date.now()-started>=35000)break;const result=await assessDiscoveryQueue(owner,email,i%3===2);if(result.status==='idle')break;items.push(result);}
+ const queue=await discoveryQueue(owner),list=queue.pending;
+ for(let i=0;i<6;i++){if(i>0&&Date.now()-started>=35000)break;const result=await assessDiscoveryQueue(owner,email,i%3===2,list);if(result.status==='idle')break;items.push(result);}
  // Evaluation only: runs after every case in this batch has been created, so it cannot change what was assessed.
  let shadow:any;try{shadow=await shadowReadCases(owner,items)}catch{shadow={status:'failed',attempted:0}}
- return {status:items.some(x=>x.status==='failed')?'partial':items.length?'complete':'idle',items,shadow,remaining:null,coolingDown:null,limit:6,timeBudgetMs:35000,notice:'Queue totals temporarily unavailable to reduce database load. Triage uses headline topics and age, not estimated investment returns.'};
+ return {status:items.some(x=>x.status==='failed')?'partial':items.length?'complete':'idle',items,shadow,remaining:list.length,coolingDown:queue.coolingDown,queueWindowHours:queue.windowHours,limit:6,timeBudgetMs:35000,notice:`Queue covers the last ${queue.windowHours} hours; older reports are not assessed. Triage uses headline topics and age, not estimated investment returns.`};
 }

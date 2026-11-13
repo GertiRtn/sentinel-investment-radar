@@ -32,12 +32,13 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
-## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 170/170 on 2026-11-13)
+## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 175/175 on 2026-11-13)
 
 - Server-side persistence on Cloudflare D1, raw captures in D1/R2 with SHA-256 dedup.
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
 - Discovery: Alpaca market news (`lib/sentinel/discovery-collector.ts`), up to 5×50 items per run, checkpointed.
-- Cases: `lib/sentinel/discovery-case.ts`, up to 6 per run with a 35 s budget, one slot in three oldest-first. Only `topic match` candidates are assessed.
+- Cases: `lib/sentinel/discovery-case.ts`, up to 6 per run with a 35 s budget, one slot in three oldest-first. Only `topic match` candidates are assessed. Since 2026-11-13 the queue (`discoveryQueue`) is the last 96 hours, read once per run and matched in memory; older reports are not assessed. The direct-role rule is `headline-relevance-v3` (hyphenated names, legal suffixes and exchange tags no longer hide the verb).
+- Idea list (`lib/sentinel/idea-select.ts` `idea-select-v1`, `GET /api/ideas`, `components/sentinel/idea-list.tsx`): "Where to look first" on Brief and Discover. Rule-meeting cases, then the closest ones with what they lack, or an explanation when nothing qualifies. Research routing only (invariant 6).
 - Security identity (`lib/sentinel/security-identity.ts`, `security-identity-v2` since 2026-11-12): active US equity + exact symbol + one SEC ticker + no other-instrument words in the name (ADR/ADS, units, warrants, rights, preferred, funds, trusts, ETFs, notes, named share classes). v1 also required the words "Common Stock", which rejected most NYSE names. Stored cases keep their v1 result.
 - Screen: `researchDecision()` in `lib/sentinel/price-assessment.ts` (`research-screen-v1`).
 - Indicative P/E from an IEX midpoint and reported annual diluted EPS; cash-flow scenarios (fixed 12% discount, ±5% growth, 5 years).
@@ -73,7 +74,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 6. From September: **fixed 2026-11-12** — replay now recomputes and compares (mismatch raises an operational alert); `evaluateEntity` passes an explicit memo; alerts disclose estimated values. **By design, not a bug:** effective tax rate (and so NOPAT/ROIC) is unavailable for loss years — unavailable beats wrong. **Decided 2026-11-12 (founder: keep both):** `consecutive_periods` counts fiscal years by default; a comparison may opt in to `"period":"quarter"` (revenue, net_income, operating_income, cfo, capex, eps_diluted only; anything else is unknown) and `"basis":"yoy_pct"` (vs the same quarter a year earlier). The unreported fiscal Q4 does not break a quarterly streak; any other gap is unknown. Following (`thesis-monitor-v2`): quarterly-only trips show as Weakening, annual or event trips as Broken.
 
 7. **Found and fixed 2026-11-13 for new cases:** off-hours, the IEX latest quote is stale and very wide, so no case assessed outside US market hours could get a P/E; all 75 screen-v2 cases on the live Site were WAIT. See price basis above. Stored cases are not rewritten. Manual Practice still shows an unknown value off-hours for the same reason.
-8. **Open:** `signal_log` has no (owner, kind, created_at) index, so most queries walk every row the owner has (about 6,000 added a day). Likely root of the D1 overload reports. Fix in its own PR: `CREATE INDEX signal_owner_kind_time ON signal_log(owner, kind, created_at)`.
+8. **Measured 2026-11-13 (`scripts/db-workload.mjs`):** the load came from the assessment queue pick (two correlated subqueries, six times a run: 11 million rows per call at a week of data), not from the missing index. Fixed by `discoveryQueue`. The index `signal_log(owner, kind, created_at)` made that old query 35× slower in the test, so it was not shipped; it still helps small unbounded reads and needs testing against every query before a migration. Measure before changing a query on `signal_log`.
 
 ---
 
@@ -85,7 +86,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - **Off until the owner starts it** (`auto_practice_control`). Then one bounded step at the end of the hourly run, plus a manual check. Stopping means no new positions; open ones still close under the exit rule. A new start is a new experiment with its own ledger.
 - Rules (`AUTO_POLICY`, `AUTO_RULES_TEXT`): only cases assessed after the start; screen v2 INVESTIGATE + `security-identity-v2` ordinary share + `named_in_headline`; $1,000 per position, max 5, one per company, max 2 opens per check, oldest assessment first; fresh narrow IEX quotes for the stock and SPY (so market hours only); 96-hour entry window; 30-day time exit; 15 bp simulated cost per side; SPY pays the same costs.
 - **Changing a rule means a new version and a new experiment.** Never edit `AUTO_POLICY` for a running one.
-- Records are append-only: one `auto_practice_decision` per considered case (an open or a final skip with its reason), `auto_practice_close`, and `auto_practice_run` when a check changed something. Writes are conditional on the ledger row count, and ids derive from the case, so overlapping or retried runs cannot double-spend or double-open.
+- Records are append-only: one `auto_practice_decision` per considered case (an open or a final skip with its reason), `auto_practice_close`, and one `auto_practice_run` per check (so the last check is always known). Writes are conditional on the ledger row count, and ids derive from the case, so overlapping or retried runs cannot double-spend or double-open.
 - Separate from manual Practice (`practice_*` records are never read or written by it), from the screen, score, rankings and alerts. No broker, no orders, no model, no user conviction invented.
 - It proves nothing until enough trades close (`MIN_CLOSED_FOR_RECORD` = 20) and it is compared with the outcomes of all assessed cases.
 

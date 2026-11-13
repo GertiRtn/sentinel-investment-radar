@@ -97,11 +97,20 @@ export function Practice() {
   return (
     <section className="mx-auto max-w-6xl space-y-6 py-2">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h2 className="text-xl font-semibold">Practice</h2><p className="text-sm text-muted-foreground">$10,000 of virtual money. Live IEX prices. Every position is compared with the same dollars in SPY.</p></div>
+        <div><h2 className="text-xl font-semibold">Practice</h2><p className="text-sm text-muted-foreground">Virtual money only. First Sentinel’s automated experiment, then your own manual trades. Each has its own $10,000 and is compared with the same dollars in SPY.</p></div>
         <button onClick={load} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><RefreshCw size={14} className={loading ? "animate-spin" : ""} />Updates every minute</button>
       </div>
       {error && <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200" role="alert">{error}</div>}
       {notice && <div className="rounded-lg border border-sky-400/40 bg-sky-400/10 p-3 text-sm text-sky-200" role="status">{notice}</div>}
+
+      {/* 1. Sentinel's own rule-following portfolio comes first. */}
+      <AutoPractice />
+
+      {/* 2. The owner's hand-made practice trades: a separate $10,000, separate records. */}
+      <div className="border-t border-border pt-6">
+        <h2 className="text-xl font-semibold">Your own practice trades (manual)</h2>
+        <p className="text-sm text-muted-foreground">A separate $10,000 that only you trade, with your own thesis and conviction. Nothing here is opened or closed by Sentinel.</p>
+      </div>
 
       <div className="rounded-xl border border-border bg-card p-6">
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
@@ -157,8 +166,6 @@ export function Practice() {
           </div>
 
           <PracticeRisk />
-
-          <AutoPractice />
 
           {s?.closed?.length > 0 && (
             <div className="rounded-xl border border-border bg-card p-5">

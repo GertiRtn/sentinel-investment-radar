@@ -7,6 +7,7 @@ import { friendlyLabel, screenLabel } from "@/lib/sentinel/screen-label";
 import { caseEvidenceScore, SCORE_MEANING } from "@/lib/sentinel/evidence-score";
 import { ResearchTeamPanel } from "./research-team-panel";
 import { WhatChanged } from "./what-changed";
+import { IdeaList } from "./idea-list";
 
 /* Morning brief dashboard: bottom line first, takes, radar, watchlist; everything else folded. */
 
@@ -153,6 +154,9 @@ export function MorningBriefView({ embedded = false }: { embedded?: boolean }) {
               ))}
             </div>
           </section>
+
+          {/* Where to look first: selected cases with the reasons, or why nothing was selected */}
+          <IdeaList Sheet={CaseSheet} />
 
           {/* Row 2: takes + side column */}
           <div className="grid gap-6 lg:grid-cols-12">

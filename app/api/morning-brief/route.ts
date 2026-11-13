@@ -1,5 +1,6 @@
 import {env} from 'cloudflare:workers';
 import {database} from '@/db/store';
+import {discoveryQueue} from '@/lib/sentinel/discovery-case';
 import {identity,json,failure} from '@/lib/sentinel/api';
 import {buildMorningBrief,BRIEF_WINDOW_HOURS} from '@/lib/sentinel/morning-brief';
 import {caseEvidenceScore} from '@/lib/sentinel/evidence-score';
@@ -21,7 +22,7 @@ export async function GET(request:Request){
   }
   const cp=await db.prepare("SELECT created_at,body FROM signal_log WHERE owner=? AND kind='discovery_checkpoint' ORDER BY created_at DESC,id DESC LIMIT 1").bind(owner).first<{created_at:string;body:string}>();
   const cpBody=cp?JSON.parse(cp.body):null;
-  const pending=await db.prepare("SELECT COUNT(*) AS n FROM signal_log s, json_each(s.body,'$.symbols') j WHERE s.owner=? AND s.kind='discovery_candidate' AND json_extract(s.body,'$.priority')='topic match' AND NOT EXISTS(SELECT 1 FROM signal_log c WHERE c.owner=s.owner AND c.kind='discovery_case' AND json_extract(c.body,'$.candidateId')=s.id AND json_extract(c.body,'$.symbol')=j.value)").bind(owner).first<{n:number}>();
+  const pending={n:(await discoveryQueue(owner)).pending.length};
   const lastOutcome=await db.prepare("SELECT MAX(created_at) AS at FROM signal_log WHERE owner=? AND kind IN ('discovery_outcome','outcome_attempt')").bind(owner).first<{at:string|null}>();
   const counts=(await db.prepare("SELECT COALESCE(json_extract(body,'$.horizonIntervals'),5) AS h,COUNT(*) AS n FROM signal_log WHERE owner=? AND kind='discovery_outcome' GROUP BY h").bind(owner).all<{h:number;n:number}>()).results;
   const shadowReadings=await db.prepare("SELECT COUNT(*) AS n FROM signal_log WHERE owner=? AND kind='shadow_reading' AND created_at>=?").bind(owner,since).first<{n:number}>();
