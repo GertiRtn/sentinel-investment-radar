@@ -30,8 +30,9 @@ function Card({ i, onOpen }: { i: any; onOpen: (id: string) => void }) {
       <p className="mt-2 text-sm">{i.event.url ? <a className="hover:underline" href={i.event.url} target="_blank" rel="noreferrer">{i.event.headline}<ExternalLink size={11} className="ml-1 inline" /></a> : i.event.headline}</p>
       <p className="text-xs text-muted-foreground">Reported by {i.event.source ?? "unknown source"}, {when(i.event.publishedAt)} · assessed {when(i.event.assessedAt)} · headline only, article not read</p>
       <div className="mt-3 grid gap-3 text-xs md:grid-cols-2">
-        <div><Label>Why look</Label><p>{i.view.label}. {i.view.text}</p></div>
-        <div><Label>Strongest counterpoint</Label><p>{i.counterpoint ? <>{i.counterpoint.text}{i.counterpoint.detail && <span className="text-muted-foreground"> — {i.counterpoint.detail}</span>}</> : <span className="text-muted-foreground">None supported by the stored records. That is not evidence of safety.</span>}</p></div>
+        <div><Label>Reason for attention</Label><p>{i.thesis?.reason ? <>{i.thesis.reason.text} <span className="text-muted-foreground">({i.thesis.reason.basis}{i.thesis.reason.period ? `, period to ${i.thesis.reason.period}` : ""})</span></> : <span className="text-muted-foreground">{i.thesis?.reasonNote ?? "No sourced supporting observation yet."}</span>}</p>
+          <p className="mt-0.5 text-muted-foreground">Screen: {i.view.label}.</p></div>
+        <div><Label>Counterpoint</Label><p>{i.thesis?.counter ? <>{i.thesis.counter.status === "unknown" && <span className="mr-1 rounded bg-muted px-1 py-0.5 text-[10px] font-semibold uppercase">Unknown</span>}{i.thesis.counter.text}</> : <span className="text-muted-foreground">None supported by the stored records. That is not evidence of safety.</span>}</p></div>
         <div><Label>Financial changes (SEC filings)</Label>
           {i.changes.length ? <ul>{i.changes.map((c: any) => <li key={c.label}>{c.label} <span className="font-semibold tabular-nums">{pct(c.changePct)}</span> <span className="text-muted-foreground">vs {c.comparison}, to {c.periodEnd} · {c.url ? <a className="underline" href={c.url} target="_blank" rel="noreferrer">filed {c.filed}</a> : `filed ${c.filed ?? "unknown"}`}</span></li>)}</ul> : <p className="text-muted-foreground">{i.changesNote}</p>}</div>
         <div><Label>Price since the news (vs SPY)</Label><PriceMove caseId={i.caseId} symbol={i.symbol} /></div>
@@ -41,7 +42,7 @@ function Card({ i, onOpen }: { i: any; onOpen: (id: string) => void }) {
         <div><Label>Missing, and what to check next</Label>
           <ul className="text-muted-foreground">{i.missing.map((m: string) => <li key={m}>• {m}</li>)}</ul>{i.nextCheck && <p>Next: {i.nextCheck}</p>}</div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><button onClick={() => onOpen(i.caseId)} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Open full case</button><span className="text-muted-foreground">{i.kind.note}</span></div>
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><button onClick={() => onOpen(i.caseId)} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Open full case and thesis</button><span className="text-muted-foreground">{i.kind.note}</span></div>
     </article>
   );
 }

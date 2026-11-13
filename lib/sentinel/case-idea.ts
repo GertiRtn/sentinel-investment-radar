@@ -9,6 +9,7 @@ import {caseEventMatch} from './event-match';
 import {ideaCard,portfolioFit,type PortfolioFit} from './idea-card';
 import {practiceState,type PracticeTrade} from './practice';
 import {AUTO_POLICY} from './auto-practice';
+import {buildThesis} from './thesis';
 
 /** Shared by the case sheet (/api/case-context) and the idea list (/api/ideas): one stored case → context + idea card. Read-only. */
 export type CaseRow={id:string;created_at:string;body:string};
@@ -30,8 +31,9 @@ export async function caseIdea(owner:string,kase:any,held:Awaited<ReturnType<typ
  const asOf=String(kase.createdAt);let figures:any[]=[],quarterly:any[]=[];const notes:string[]=[];
  if(kase.identity?.cik){try{const file=await companyFile('sec:'+kase.identity.cik,asOf,'recorded',owner);figures=file.figures;quarterly=file.quarterlyFigures;}catch{notes.push('SEC figures could not be loaded.');}}
  const pack=buildEvidencePack({caseId:kase.id,kase,figures,quarterlyFigures:quarterly,asOf,recordedBy:asOf});pack.missing.push(...notes);
- const context=whatChanged(pack,kase),score=caseEvidenceScore(kase);
- return {context,score,idea:ideaCard({kase,context,score,match:caseEventMatch(kase),fit:fitFor(String(kase.symbol??''),held)})};
+ const context=whatChanged(pack,kase),score=caseEvidenceScore(kase),match=caseEventMatch(kase);
+ // `thesis(price)` rebuilds the panel once the owner has asked for prices; the observations do not change.
+ return {context,score,match,idea:ideaCard({kase,context,score,match,fit:fitFor(String(kase.symbol??''),held)}),thesis:(price?:any)=>buildThesis({kase,context,match,price})};
 }
 
 /** Daily closes around the event vs SPY. Fetched only when a person asks; archived and reused for 6 hours. */

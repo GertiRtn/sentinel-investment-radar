@@ -1,7 +1,7 @@
 import {database,hash,iso} from '@/db/store';
 import {collectStockQuote} from '@/app/api/stock-quote/route';
 import {eventMatch,EVENT_MATCH_VERSION} from './event-match';
-import {AUTO_POLICY,AUTO_VERSION,AUTO_RULES_TEXT,planAuto,autoState,currentExperiment,type Candidate,type Control,type DecisionRecord,type CloseRecord,type Quote} from './auto-practice';
+import {AUTO_POLICY,AUTO_VERSION,AUTO_RULES_TEXT,planAuto,autoState,currentExperiment,regularSession,checkStatus,freshQuote,type Candidate,type Control,type DecisionRecord,type CloseRecord,type Quote} from './auto-practice';
 
 /**
  * Runner for the automated Practice experiment (virtual money only; see auto-practice.ts for the rules).
@@ -65,6 +65,8 @@ export async function runAutoPractice(owner:string,trigger:'hourly'|'manual'){
  for(const c of plan.closes){const id='auto-close:'+await hash(JSON.stringify([owner,exp.experimentId,c.positionId]));if(await append(id,'auto_practice_close',c.symbol,{...c,version:AUTO_VERSION,experimentId:exp.experimentId,at:now}))closedNow.push(c.symbol);}
  for(const d of [...plan.opens,...plan.skips]){const id='auto-decision:'+await hash(JSON.stringify([owner,exp.experimentId,d.caseId]));if(await append(id,'auto_practice_decision',d.symbol,{...d,version:AUTO_VERSION,experimentId:exp.experimentId,...(d.kind==='open'?{positionId:id}:{}),at:now}))(d.kind==='open'?opened:skipped).push(d.symbol);}
  const summary={version:AUTO_VERSION,experimentId:exp.experimentId,at:now,trigger,opened,closed:closedNow,skipped,waiting:plan.waiting.slice(0,20),counts:plan.counts,quotesFetched:Object.keys(prices).length,conflict,
+  // Recorded with the check: the session by the New York clock (holidays unknown) and, when quotes were fetched, whether SPY's was fresh.
+  market:{regularHours:regularSession(now),freshSpyQuote:'SPY' in prices?freshQuote((prices as Record<string,Quote|null>).SPY,Date.parse(now)):null,note:'Weekdays 09:30–16:00 New York time; market holidays are not checked.'},
   note:conflict?'Another check changed the ledger at the same time; the rest was left for the next check.':null};
  await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'auto_practice_run',NULL,?)").bind(crypto.randomUUID(),owner,now,JSON.stringify(summary)).run();
  return {status:conflict?'partial' as const:'complete' as const,...summary};
@@ -81,13 +83,13 @@ export async function autoPracticeStep(owner:string){
 export async function autoSnapshot(owner:string){
  const now=iso(),l=await ledger(owner),exp=currentExperiment(l.controls);
  const rules={version:AUTO_VERSION,policy:AUTO_POLICY,text:AUTO_RULES_TEXT,disclaimer:'Virtual money only. No broker, no real orders. The rules are an untested hypothesis fixed before any results; this is not advice, a forecast or evidence of an edge.'};
- if(!exp)return {status:'not_started' as const,now,rules,experiment:null,state:null,waiting:[],lastRun:null};
+ if(!exp)return {status:'not_started' as const,now,rules,experiment:null,state:null,waiting:[],lastRun:null,lastCheck:checkStatus(null)};
  const snap=snapshotInputs(l,exp.experimentId),symbols=[...new Set(snap.open.map(p=>p.symbol))].slice(0,MAX_LIVE);
  const live=symbols.length?await quotes([...symbols,'SPY']):{};
  const state=autoState({experimentId:exp.experimentId,decisions:l.decisions,closes:l.closes,live,now});
  const dry=planAuto({now,startedAt:exp.startedAt,active:exp.active,...snap,candidates:await candidates(owner,exp.startedAt,now),prices:{}});
  return {status:exp.active?'active' as const:'stopped' as const,now,rules,experiment:{id:exp.experimentId,startedAt:exp.startedAt,stoppedAt:exp.stoppedAt,earlierExperiments:exp.earlier},state,
-  waiting:dry.waiting.map(w=>({...w,reason:/No fresh/.test(w.reason)?'Eligible; waiting for the next check with a fresh quote (US market hours).':w.reason})),considered:dry.counts,lastRun:l.lastRun?.experimentId===exp.experimentId?l.lastRun:null};
+  waiting:dry.waiting.map(w=>({...w,reason:/No fresh/.test(w.reason)?'Eligible; waiting for the next check with a fresh quote (US market hours).':w.reason})),considered:dry.counts,lastRun:l.lastRun?.experimentId===exp.experimentId?l.lastRun:null,lastCheck:checkStatus(l.lastRun?.experimentId===exp.experimentId?l.lastRun:null)};
 }
 
 export async function controlAutoPractice(owner:string,action:'start'|'stop',requestId:string){

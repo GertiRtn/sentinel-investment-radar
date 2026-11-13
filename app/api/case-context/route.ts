@@ -13,7 +13,7 @@ export async function GET(request:Request){try{
  const owner=await identity(request),url=new URL(request.url),caseId=url.searchParams.get('case')||'';
  const row=await database().prepare("SELECT id,created_at,body FROM signal_log WHERE id=? AND owner=? AND kind='discovery_case'").bind(caseId,owner).first<{id:string;created_at:string;body:string}>();
  if(!row)throw new ApiError(404,'Case not found.');
- const kase=parseCase(row),{context,idea}=await caseIdea(owner,kase,await holdings(owner));
- if(url.searchParams.get('prices')!=='1')return json({...context,idea,price:{status:'not_loaded',reason:'Price context loads only when you ask for it.'}});
- return json({...context,idea,price:await casePrice(kase)});
+ const kase=parseCase(row),{context,idea,thesis}=await caseIdea(owner,kase,await holdings(owner));
+ if(url.searchParams.get('prices')!=='1')return json({...context,idea,thesis:thesis(null),price:{status:'not_loaded',reason:'Price context loads only when you ask for it.'}});
+ const price=await casePrice(kase);return json({...context,idea,thesis:thesis(price),price});
 }catch(e){return failure(e)}}
