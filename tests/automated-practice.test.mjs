@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const esbuild=require(require.resolve('esbuild',{paths:[require.resolve('wrangler/package.json')]}));
+const b=await esbuild.build({entryPoints:['lib/sentinel/automated-practice.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+const {planAutomatedPractice:plan}=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
+const now='2026-11-13T12:00:00.000Z';
+const q={priceCents:10000,at:now,rawEventId:'raw',source:'IEX midpoint'};
+const c=(id,symbol)=>({caseId:id,symbol,assessedAt:'2026-11-13T11:00:00.000Z',publishedAt:'2026-11-13T10:00:00.000Z',firstObservedAt:'2026-11-13T10:30:00.000Z',screenVersion:'research-screen-v2',conclusion:'INVESTIGATE',score:80});
+const input=()=>({now,cashCents:1000000,candidates:[c('a','AAA'),c('b','BBB'),c('c','CCC')],positions:[],prices:{AAA:q,BBB:q,CCC:q,SPY:q},seenCaseIds:[]});
+test('deterministic, capped entries with explicit cost and no forecast',()=>{const x=plan(input());assert.deepEqual(x,plan(input()));assert.deepEqual(x.decisions.map(d=>d.action),['open','open','skip']);assert.equal(x.decisions[0].costCents,150);});
+test('point in time, old data, duplicates and unknown quotes fail closed',()=>{const i=input();i.candidates=[{...c('a','AAA'),firstObservedAt:'2026-11-13T13:00:00.000Z'},c('b','BBB'),c('c','CCC')];i.prices.BBB={...q,at:'2026-11-13T11:00:00.000Z'};i.seenCaseIds=['c'];assert.deepEqual(plan(i).decisions.map(x=>x.action),['skip','skip','skip']);});
+test('due positions close only with fresh paired prices and slots are not prematurely reused',()=>{const i=input();i.positions=Array.from({length:5},(_,n)=>({id:String(n),symbol:'OLD'+n,openedAt:'2026-10-01T12:00:00.000Z',quantityMicros:1000000}));i.prices.OLD0=q;const d=plan(i).decisions;assert.equal(d.filter(x=>x.action==='close').length,1);assert.equal(d.filter(x=>x.action==='open').length,0);assert.equal(d.find(x=>x.action==='close').costCents,15);});
+test('invalid snapshot is rejected and low cash cannot open',()=>{const i=input();i.cashCents=-1;assert.throws(()=>plan(i));i.cashCents=99999;assert.equal(plan(i).decisions.filter(x=>x.action==='open').length,0);});
