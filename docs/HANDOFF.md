@@ -441,3 +441,30 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 **Not verified:** browser rendering; the ideas page against production data and real bars; production rows read (D1 metrics are not visible from here); whether Sites applies new files under `drizzle/` automatically.
 
 **Next:** (1) after publishing, check the 15:26 and 16:26 UTC runs for the first "meets research rules" case and the first fill; (2) confirm events from SEC 8-K/10-Q filings; (3) split the hourly run and raise the batch above 6; (4) the index, tested against all queries, as its own PR; (5) outcomes table by label, band, price basis and event type once results arrive.
+
+## 2026-11-13 (later) — Claude Code: Investment thesis panel in the case sheet (founder brief "first version of Sentinel's investment reasoning")
+
+**Baseline:** main 85a5b01 (#30 merged and published); 175/175 tests.
+
+**Live Site, read-only at 13:59 UTC (no Practice record changed, experiment not started or stopped):**
+- #30 is live: `/api/ideas` answers. 224 cases in 7 days; 0 meet the rules, 2 watch, 79 not enough data, 2 probable wrong-company, 17 analyst-only. "Where to look first" shows five "closest" companies, Williams-Sonoma first.
+- Experiment active since 12:51 UTC, $10,000 cash, no positions, no skips, nothing waiting. It has seen 3 cases, none eligible. **No virtual fill has occurred.** No check record exists yet: the only run since the start (13:26 UTC) was on the version that logged checks only when something changed.
+- Last scan 13:26 UTC, partial (more pages remained); 3 cases assessed in that run. Queue count 2,240. 0 outcomes.
+- **Not verifiable from here:** hourly-run errors, and whether the queue rewrite reduced database reads (no run had happened on the #30 code when checked; D1 metrics are not visible).
+
+**Built (branch `investment-thesis-panel`):**
+- `lib/sentinel/thesis.ts` (`investment-thesis-v1`, pure): A why the case appeared (event, source, times, match supported / uncertain / likely wrong, analyst opinion vs company announcement vs report about the company vs unclear) · B up to three supporting observations (one revenue comparison, profitability, cash flow first), each with comparison basis, periods, filing link and what it does and does not establish · C up to three challenges, evidence-supported first, then explicit unknowns · D P/E with its actual price basis, time, EPS period and limitation, plus the on-request price move vs SPY marked "known when assessed" or "later" · E up to three research questions from the case's topic and gaps. A likely wrong-company case gets no supporting observations and `promoted: false`.
+- Reuses `buildEvidencePack` → `whatChanged` (so a % change exists only where the context already judged the periods comparable), `caseEventMatch` and `priceContext`. No second engine, no model.
+- Served as `thesis` by `GET /api/case-context` (rebuilt with prices on `?prices=1`); `components/sentinel/thesis-panel.tsx` is the first block of the case sheet (Brief and Discover). "The idea in brief", "What changed?", the score and the Research team are unchanged below it.
+- "Where to look first" cards: "Reason for attention" and "Counterpoint" now come from `thesis.summary` (the first supporting observation and the first challenge or labelled unknown), and the button reads "Open full case and thesis". Selection and order are unchanged.
+- Practice: "Last automated check" block from the stored `auto_practice_run` via `checkStatus()`: time, trigger, market open at that time, opened/closed/waiting/skipped, cases seen. New run records also store `market: {regularHours, freshSpyQuote}` (New York clock; holidays not checked). A field an older record lacks shows "unknown". No rule, accounting or existing record changed.
+
+**Verified:** 183/183 tests (175 before; no existing assertion changed). New: `tests/thesis.test.mjs` (8: positives, counter-evidence, mismatch, analyst vs announcement, invalid comparison periods, filed-after-assessment exclusion, price/valuation timing, Practice status) and route assertions in the Miniflare end-to-end test (case sheet and dashboard share the same observations; mismatch not promoted; stored case byte-identical after reading; check status). `tsc --noEmit` clean; `pnpm build` OK.
+
+**Tested with mocks only:** everything in the panel. SEC figures, quotes and bars are fixtures; the price-move section has not run on real bars.
+
+**Not verified:** browser rendering of the panel, the cards and the Practice block; the panel on a real production case.
+
+**Limits of v1:** observations come from annual and quarterly totals only (no segments, margins or guidance); "company announcement" is read from headline wording, not confirmed against a filing; profitability and cash flow use the latest annual figures; expectations are always unknown.
+
+**Next:** confirm the event against the company's 8-K/10-Q; add margins and the newly filed quarter; verify the first market-hours check and fill on the live Site.

@@ -32,7 +32,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
-## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 175/175 on 2026-11-13)
+## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 183/183 on 2026-11-13)
 
 - Server-side persistence on Cloudflare D1, raw captures in D1/R2 with SHA-256 dedup.
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
@@ -49,6 +49,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - Discover ranking (`lib/sentinel/discover-rank.ts`, `discover-rank-v2` since 2026-11-13): last 7 days of cases, one row per symbol, highest evidence score first, with a "why here" line; research routing, not a return forecast (invariant 6). v2 lists a probable company mismatch (`name_conflict`) last. The raw feed is folded below.
 - Event ↔ company match (`lib/sentinel/event-match.ts`, `event-match-v1`, 2026-11-13): whether the stored headline or provider summary names the SEC company. A provider ticker tag alone is `ticker_only`; the ticker's letters used as another name ("ams-OSRAM" tagged AMS) is `name_conflict`. Only `named_in_headline` is confirmed. Stored on new cases; older cases are read from their stored text.
 - Price basis (`lib/sentinel/last-close.ts`, `price-basis-v2`, 2026-11-13): the P/E uses an eligible live IEX midpoint, or, when none exists (off-hours quotes are stale and very wide), the last completed IEX daily close, at most 5 days old, archived and labelled (`price.basis`). The screen rules did not change. Never compare outcomes across bases without saying so.
+- Investment thesis panel (`lib/sentinel/thesis.ts`, `investment-thesis-v1`, `components/sentinel/thesis-panel.tsx`): first block of the case sheet. A why it appeared · B what supports a thesis · C what challenges it (supported points, then explicit unknowns) · D price and valuation · E research questions. Built from `whatChanged`, the event match and the on-request price context; each observation states its periods, filing and what it does not establish. A likely wrong-company case gets no supporting observations. The idea-list cards take their reason and counterpoint from the same object (`thesis.summary`).
 - Idea card (`lib/sentinel/idea-card.ts`, `idea-card-v1`): the top of the case sheet. Sentinel's rule-based view, uncertainty, why now, for, against, unknowns and fit with virtual Practice holdings. Deterministic; no model text, no upside or probability, no buy/sell wording.
 - Following monitor (`lib/sentinel/thesis-monitor.ts`, `GET /api/following`): per followed company, Broken / Weakening / Holding / Can't check / No thesis, from the owner's kill criteria only, plus what changed in the last 7 days (filings, news, criterion alerts, Sentinel cases). Unknown is never Holding.
 - Navigation (2026-11-12): main tabs Brief (home) / Discover / Following / Practice; the rest under a Library menu. Old tab names map via `TAB_ALIAS` in `app/page.tsx`.

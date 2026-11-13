@@ -23,6 +23,6 @@ export async function GET(request:Request){try{
  const light:LightCase[]=rows.results.map(r=>{let topics:unknown=[];try{topics=JSON.parse(r.topics||'[]')}catch{}return {id:r.id,symbol:String(r.symbol??''),createdAt:r.created_at,status:String(r.status??''),conclusion:String(r.conclusion??''),screenVersion:r.screen??null,reason:r.reason??null,score:typeof r.score==='number'?r.score:null,
   matchLevel:r.mv===EVENT_MATCH_VERSION&&r.ml?String(r.ml):eventMatch({headline:r.headline,summary:r.summary,companyName:r.name,symbol:r.symbol}).level,topics:Array.isArray(topics)?topics.filter((t):t is string=>typeof t==='string'):[],priceStatus:r.price??null,securityStatus:r.sec??null};});
  const selection=selectIdeas(light,now),held=selection.picked.length?await holdings(owner):null,ideas=[];
- for(const p of selection.picked){const row=await one(owner,p.caseId);if(!row)continue;const kase=parseCase(row);try{const {context,idea,score}=await caseIdea(owner,kase,held);ideas.push(ideaBrief(kase,context,idea,score,p.tier));}catch{/* a case that cannot be read is left out, never guessed */}}
+ for(const p of selection.picked){const row=await one(owner,p.caseId);if(!row)continue;const kase=parseCase(row);try{const {context,idea,score,thesis}=await caseIdea(owner,kase,held);ideas.push({...ideaBrief(kase,context,idea,score,p.tier),thesis:thesis(null).summary});}catch{/* a case that cannot be read is left out, never guessed */}}
  return json({...selection,generatedAt:now,ideas});
 }catch(e){return failure(e)}}

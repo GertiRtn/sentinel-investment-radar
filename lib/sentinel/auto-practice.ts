@@ -189,3 +189,24 @@ export function autoState(input: { experimentId: string; decisions: DecisionReco
   };
 }
 export const MIN_CLOSED_FOR_RECORD = 20;
+
+/** Regular US session by the New York clock at `iso` (weekdays 09:30–16:00). Market holidays are not known to Sentinel. */
+export function regularSession(iso: string): boolean | null {
+  const t = Date.parse(iso); if (!Number.isFinite(t)) return null;
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(t)).map(x => [x.type, x.value]));
+  const mins = Number(p.hour) * 60 + Number(p.minute);
+  return !['Sat', 'Sun'].includes(p.weekday) && mins >= 570 && mins < 960;
+}
+/** What a stored check record says, field by field. Anything the record does not hold is 'unknown', never inferred. */
+export function checkStatus(run: any) {
+  const n = (v: unknown) => (Array.isArray(v) ? v.length : 'unknown' as const), has = run && typeof run === 'object';
+  return {
+    recorded: !!has, at: has && typeof run.at === 'string' ? run.at : null, trigger: has && (run.trigger === 'hourly' || run.trigger === 'manual') ? run.trigger : 'unknown',
+    marketOpen: has && typeof run.market?.regularHours === 'boolean' ? run.market.regularHours as boolean : 'unknown' as const,
+    freshQuotes: has && typeof run.market?.freshSpyQuote === 'boolean' ? run.market.freshSpyQuote as boolean : 'unknown' as const,
+    opened: has ? n(run.opened) : 'unknown' as const, closed: has ? n(run.closed) : 'unknown' as const, skipped: has ? n(run.skipped) : 'unknown' as const, waiting: has ? n(run.waiting) : 'unknown' as const,
+    casesSeen: has && typeof run.counts?.candidates === 'number' ? run.counts.candidates as number : 'unknown' as const,
+    notMeetingRules: has && typeof run.counts?.notMeetingRules === 'number' ? run.counts.notMeetingRules as number : 'unknown' as const,
+    note: has && typeof run.note === 'string' ? run.note : null,
+  };
+}

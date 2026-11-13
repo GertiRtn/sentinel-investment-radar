@@ -48,10 +48,20 @@ export function AutoPractice() {
       {d && <div className="space-y-4 text-sm">
         <p className="text-xs"><span className={`mr-1.5 rounded px-1.5 py-0.5 font-semibold ${d.status === "active" ? "bg-sky-400/15 text-sky-200" : "bg-muted"}`}>{d.status === "active" ? "Running" : d.status === "stopped" ? "Stopped" : "Not started"}</span>
           {d.experiment ? <>Started {when(d.experiment.startedAt)}{d.experiment.stoppedAt ? `, stopped ${when(d.experiment.stoppedAt)} (open positions still close on schedule)` : ""}. Checked once an hour by the scheduled run, and when you click.</> : <>Nothing happens until you start it.</>}</p>
-        {d.experiment && <div className="rounded-md border border-border p-2.5 text-xs">
-          <div><span className="font-semibold">Last check:</span> {(run?.at || last?.at) ? <>{when((run ?? last).at)} ({(run ?? last).trigger === "manual" ? "you clicked" : "hourly run"}) — opened {(run ?? last).opened?.length ? (run ?? last).opened.join(", ") : "nothing"}, closed {(run ?? last).closed?.length ? (run ?? last).closed.join(", ") : "nothing"}, skipped {(run ?? last).skipped?.length ?? 0}, {(run ?? last).waiting?.length ?? 0} waiting. It looked at {(run ?? last).counts?.candidates ?? 0} case{(run ?? last).counts?.candidates === 1 ? "" : "s"} assessed since the start; {(run ?? last).counts?.notMeetingRules ?? 0} did not meet the research rules.{(run ?? last).note ? ` ${(run ?? last).note}` : ""}</> : <span className="text-amber-200">no check has been recorded since the start. The hourly run may not have happened yet; click “Run a check now”.</span>}</div>
-          <div className="mt-1 text-muted-foreground">{usMarketOpen() ? "The US market is open now, so positions can be opened or closed at the next check." : "The US market is closed now (it trades weekdays 14:30–21:00 UK time; holidays not checked). Eligible cases wait; nothing is opened or closed until it reopens."}</div>
-        </div>}
+        {d.experiment && (() => { const c = d.lastCheck ?? { recorded: false }; const v = (x: any) => (x === "unknown" || x === undefined || x === null ? "unknown" : String(x)); return (
+          <div className="rounded-md border border-border p-2.5 text-xs">
+            <div className="mb-1.5 font-semibold">Last automated check</div>
+            {!c.recorded ? <p className="text-amber-200">No check has been recorded for this experiment yet. The hourly run may not have happened since the start, or it ran on an earlier version that logged only checks with trades. Click “Run a check now” to record one.</p> : <>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+                <div><span className="text-muted-foreground">Time</span><div>{c.at ? when(c.at) : "unknown"} ({c.trigger === "manual" ? "you clicked" : c.trigger === "hourly" ? "hourly run" : "unknown"})</div></div>
+                <div><span className="text-muted-foreground">US market at that time</span><div>{c.marketOpen === "unknown" ? "unknown" : c.marketOpen ? "open (by the clock)" : "closed (by the clock)"}{c.freshQuotes === true ? ", fresh quotes" : c.freshQuotes === false ? ", no fresh quotes" : ""}</div></div>
+                <div><span className="text-muted-foreground">Opened · closed</span><div className="tabular-nums">{v(c.opened)} · {v(c.closed)}</div></div>
+                <div><span className="text-muted-foreground">Waiting · skipped</span><div className="tabular-nums">{v(c.waiting)} · {v(c.skipped)}</div></div>
+              </div>
+              <p className="mt-1.5 text-muted-foreground">Cases assessed since the start: {v(c.casesSeen)}; did not meet the research rules: {v(c.notMeetingRules)}.{c.note ? ` ${c.note}` : ""} Market hours are weekdays 14:30–21:00 UK time; holidays are not checked.</p>
+            </>}
+            <p className="mt-1 text-muted-foreground">Right now the US market is {usMarketOpen() ? "open" : "closed"} by the clock{usMarketOpen() ? "." : ", so nothing can be opened or closed until it reopens."}</p>
+          </div>); })()}
 
         {s && <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
