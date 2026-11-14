@@ -327,6 +327,8 @@ await test('case context: owner-only, no network until asked, archives and reuse
  assert.equal(priced.data.price.status,'ok',JSON.stringify(priced.data.price));assert.equal(priced.data.price.before.knownAtCaseTime,true);assert.equal(priced.data.price.adjustment,'all');assert.equal(priced.data.price.rawIds.length,2);
  const archived=(await db.prepare("SELECT COUNT(*) n FROM raw_event WHERE (source LIKE 'alpaca:iex:daily-bars:CTX:%' OR source LIKE 'alpaca:iex:daily-bars:SPY:%')").first()).n;assert.equal(archived,2);
  const again=await req('/case-context?case='+caseId+'&prices=1');assert.equal(again.data.price.status,'ok','a second view reuses the archive (no second mock exists)');
+ // market-model-v1 reads the same archived bars. About 40 days of history is too little, and SPY is flat here, so it says unavailable with what it needs; it never guesses.
+ const mm=priced.data.price.marketModel;assert.equal(mm.version,'market-model-v1');assert.equal(mm.status,'unavailable');assert.equal(mm.sensitivity,null);assert.ok(mm.needed);assert.equal(mm.peers.status,'unavailable');
  assert.equal((await db.prepare("SELECT COUNT(*) n FROM raw_event WHERE (source LIKE 'alpaca:iex:daily-bars:CTX:%' OR source LIKE 'alpaca:iex:daily-bars:SPY:%')").first()).n,2);
  assert.equal((await db.prepare('SELECT body FROM signal_log WHERE id=?').bind(caseId).first()).body,before,'the case record is unchanged');
  assert.equal(JSON.stringify((await req('/discovery')).data.ranked),rankBefore,'Discover ranking is unchanged');

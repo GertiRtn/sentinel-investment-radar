@@ -1,6 +1,7 @@
 "use client";
 import { ExternalLink } from "lucide-react";
 import { EventVerification } from "./event-verification";
+import { MarketModel } from "./market-model";
 
 /* Investment thesis panel (investment-thesis-v1): five questions about one case, from stored records and fixed rules. */
 
@@ -32,7 +33,7 @@ function Move({ w, symbol }: { w: any; symbol: string }) {
   );
 }
 
-export function ThesisPanel({ t, onLoadPrices, loadingPrice, caseId }: { t: any; onLoadPrices: () => void; loadingPrice: boolean; caseId?: string }) {
+export function ThesisPanel({ t, onLoadPrices, loadingPrice, caseId, marketModel }: { t: any; onLoadPrices: () => void; loadingPrice: boolean; caseId?: string; marketModel?: any }) {
   const a = t.appeared, v = t.priceValuation.valuation, m = t.priceValuation.priceMove;
   return (
     <div className="space-y-4 rounded-lg border border-sky-400/40 p-3 text-xs">
@@ -65,6 +66,7 @@ export function ThesisPanel({ t, onLoadPrices, loadingPrice, caseId }: { t: any;
               {m.before ? <Move w={m.before} symbol={m.symbol} /> : <p className="text-muted-foreground">Before the report: {m.beforeMissing}</p>}
               {m.after ? <Move w={m.after} symbol={m.symbol} /> : <p className="text-muted-foreground">Since the report: no completed session yet.</p>}
               <p className="text-[10px] text-muted-foreground">{m.source}, adjustment “{m.adjustment}”, fetched {when(m.fetchedAt)}. Stock and SPY use the same dates. Last close before the report: {m.lastCloseBeforeEvent}.</p>
+              <MarketModel m={marketModel} />
             </div>}
         <p className="mt-2">{v.status === "indicative" ? <>Indicative P/E <span className="font-semibold tabular-nums">{v.pe.toFixed(1)}</span> <span className="text-muted-foreground">— price: {v.priceBasis}{typeof v.price === "number" ? ` ($${v.price.toFixed(2)})` : ""}, {when(v.priceTime)} · annual diluted EPS{typeof v.eps === "number" ? ` $${v.eps.toFixed(2)}` : ""} for {v.epsPeriod.start ?? "?"} to {v.epsPeriod.end ?? "?"}{v.accession ? ` (${v.accession})` : ""}. {v.limitation}</span></> : <><span className="mr-1.5 rounded bg-muted px-1.5 py-0.5 font-semibold">Unavailable</span><span className="text-muted-foreground">P/E: {v.reason}</span></>}</p>
         <p className="mt-1"><span className="mr-1.5 rounded bg-muted px-1.5 py-0.5 font-semibold">Unknown</span><span className="text-muted-foreground">Expectations: {t.priceValuation.expectations}</span></p>
