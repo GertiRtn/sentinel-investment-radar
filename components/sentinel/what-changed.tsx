@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { ThesisPanel } from "./thesis-panel";
+import { CaseOverview } from "./case-overview";
 
 /* "What changed?" in the case sheet: event, sourced business changes, risks, valuation, price context, gaps. */
 
@@ -67,7 +68,7 @@ export function IdeaCard({ idea }: { idea: any }) {
       <div className={`rounded-md border p-2.5 ${TONE[idea.view.tone] ?? TONE.wait}`}>
         <div className="font-semibold">Sentinel’s view: {idea.view.label}</div>
         <p className="mt-0.5 text-xs">{idea.view.text}</p>
-        <p className="mt-1 text-xs text-muted-foreground">How sure: {idea.view.uncertainty}</p>
+        <p className="mt-1 text-xs text-muted-foreground">Checklist: {idea.view.uncertainty}</p>
       </div>
       <div className="grid gap-2 text-xs sm:grid-cols-2">
         <div><span className="text-muted-foreground">Security:</span> {idea.security.text}</div>
@@ -105,9 +106,10 @@ export function WhatChanged({ caseId, symbol }: { caseId: string; symbol: string
   if (!d) return <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">Loading what changed…</div>;
   const ev = d.event, p = d.price, v = d.valuation;
   return (<>
-    {d.thesis && <ThesisPanel t={d.thesis} onLoadPrices={loadPrices} loadingPrice={loadingPrice} caseId={caseId} marketModel={d.price?.marketModel} />}
-    {d.idea && <IdeaCard idea={d.idea} />}
-    <div className="space-y-4 rounded-lg border border-border p-3 text-sm">
+    <CaseOverview d={d} symbol={symbol} />
+    {d.thesis && <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-semibold">Full investment thesis and price context</summary><div className="mt-3"><ThesisPanel t={d.thesis} onLoadPrices={loadPrices} loadingPrice={loadingPrice} caseId={caseId} marketModel={d.price?.marketModel} /></div></details>}
+    {d.idea && <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-semibold">Full idea and practice portfolio context</summary><div className="mt-3"><IdeaCard idea={d.idea} /></div></details>}
+    <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-semibold">Financial figures, sources and missing information</summary><div className="mt-3 space-y-4 text-sm">
       <h4 className="font-semibold">What changed?</h4>
 
       <section><h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">The event</h5>
@@ -139,7 +141,7 @@ export function WhatChanged({ caseId, symbol }: { caseId: string; symbol: string
           : <div className="space-y-2">
               {p.before ? <PriceWindow w={p.before} symbol={symbol} /> : <Unavailable>{p.reason}</Unavailable>}
               {p.after ? <PriceWindow w={p.after} symbol={symbol} /> : <Unavailable>No completed session after the event yet.</Unavailable>}
-              <p className="text-[10px] text-muted-foreground">{p.source}, adjustment “{p.adjustment}”, fetched {when(p.fetchedAt)} (later than the case). Last close before the event: {p.lastCloseBeforeEvent}. {p.caveats.join(" ")}</p>
+              <p className="text-[10px] text-muted-foreground">{p.source}, adjustment “{p.adjustment}”, fetched {when(p.fetchedAt)}. Last close before the event: {p.lastCloseBeforeEvent}. {p.caveats.join(" ")}</p>
             </div>}
       </section>
 
@@ -147,6 +149,6 @@ export function WhatChanged({ caseId, symbol }: { caseId: string; symbol: string
         <ul className="mt-1 list-disc pl-5 text-muted-foreground">{d.missing.map((m: string) => <li key={m}><Tag kind="missing" />{m}</li>)}</ul>
         <ul className="mt-2 list-disc pl-5">{d.nextChecks.map((m: string) => <li key={m}>Check: {m}</li>)}</ul>
       </details>
-    </div>
+    </div></details>
   </>);
 }

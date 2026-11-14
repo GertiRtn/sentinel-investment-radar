@@ -87,23 +87,22 @@ function ScoreChecklist({ c }: { c: any }) {
 export function CaseSheet({ c, onClose }: { c: any | null; onClose: () => void }) {
   return (
     <Sheet open={!!c} onOpenChange={o => !o && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent className="sentinel-case-sheet w-full overflow-y-auto sm:max-w-2xl">
         {c && <>
           <SheetHeader>
             <div className="flex items-center gap-2"><Chip label={c.decision?.version === "research-screen-v2" ? (c.conclusion ?? "WAIT") : screenLabel(c)} /><span className="text-sm text-muted-foreground">{c.decision?.version ?? "earlier screen"}</span></div>
-            <SheetTitle className="text-left">{c.symbol} · {c.identity?.name ?? "Company unverified"}</SheetTitle>
-            <SheetDescription className="text-left">{c.event?.headline}</SheetDescription>
+            <SheetTitle className="sentinel-case-title text-left">{c.symbol}<span>{c.identity?.name ?? "Company unverified"}</span></SheetTitle>
+            <SheetDescription className="sr-only">{c.event?.headline ?? "Company research case"}</SheetDescription>
           </SheetHeader>
           <div className="space-y-6 px-4 pb-8 text-sm">
             <p className="text-muted-foreground">{c.event?.source ?? "Unknown source"} · published {dayTime(c.event?.publishedAt)} · assessed {dayTime(c.createdAt)}{c.event?.url && <> · <a className="inline-flex items-center gap-1 text-sky-300 hover:underline" href={c.event.url} target="_blank" rel="noreferrer">original <ExternalLink size={12} /></a></>}</p>
             {c.id && <WhatChanged caseId={c.id} symbol={c.symbol} />}
-            <ScoreChecklist c={c} />
-            {c.id && <ResearchTeamPanel caseId={c.id} />}
+            <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-semibold">Checklist, screening rules and sources</summary><div className="mt-4 space-y-5"><ScoreChecklist c={c} />
             <div><h4 className="mb-2 font-semibold">Screening rules</h4>
               {c.rules?.length ? <ul className="space-y-1.5">{c.rules.map((r: any) => <li key={r.id} className="flex gap-2"><span className={r.passed ? "text-sky-300" : "text-amber-300"}>{r.passed ? "✓" : "✕"}</span><span><span className="font-medium">{r.id}</span> {r.detail}{r.passed ? "" : " — not met"}</span></li>)}</ul> : <p className="text-muted-foreground">Rules were not evaluated (earlier screen version or data incomplete).</p>}
             </div>
             <div><h4 className="mb-2 font-semibold">Data readiness</h4>
-              {c.readiness?.blockers?.length ? <ul className="list-disc space-y-1 pl-5 text-muted-foreground">{c.readiness.blockers.map((b: string) => <li key={b}>{b}</li>)}</ul> : <p className="text-muted-foreground">{c.readiness?.status === "DATA_READY" ? "All required data present." : "Unknown"}</p>}
+              {c.readiness?.blockers?.length ? <ul className="list-disc space-y-1 pl-5 text-muted-foreground">{c.readiness.blockers.map((b: string) => <li key={b}>{b}</li>)}</ul> : <p className="text-muted-foreground">{c.readiness?.status === "DATA_READY" ? "Screening data is complete. Further investment research is still needed." : "Unknown"}</p>}
             </div>
             <div><h4 className="mb-2 font-semibold">Figures and sources</h4>
               <ul className="space-y-2">
@@ -115,6 +114,8 @@ export function CaseSheet({ c, onClose }: { c: any | null; onClose: () => void }
             <div><h4 className="mb-2 font-semibold">What to verify next</h4>
               <ul className="list-disc space-y-1 pl-5 text-muted-foreground">{[...(c.event?.analysis?.questions ?? []), ...(c.missing ?? [])].slice(0, 8).map((q: string, i: number) => <li key={i}>{q}</li>)}</ul>
             </div>
+            </div></details>
+            {c.id && <details className="rounded-lg border border-border p-3"><summary className="cursor-pointer font-semibold">Research team</summary><div className="mt-3"><ResearchTeamPanel caseId={c.id} /></div></details>}
             {c.id && c.symbol && <a href={`/#practice?case=${encodeURIComponent(c.id)}&symbol=${encodeURIComponent(c.symbol)}`} onClick={onClose} className="inline-flex w-full items-center justify-center rounded-md bg-[#cbf47b] px-3 py-2 text-sm font-semibold text-black">Practice-trade this with virtual money</a>}
             <p className="text-xs text-muted-foreground">Research record, not investment advice.</p>
           </div>
@@ -147,19 +148,21 @@ export function MorningBriefView({ embedded = false }: { embedded?: boolean }) {
         {data && <>
           {/* Row 1: the bottom line */}
           <section className="grid gap-6 rounded-2xl border border-border bg-card p-7 lg:grid-cols-[1fr_auto] lg:items-center">
-            <div><h1 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">The bottom line · last {data.windowHours} hours</h1><p className="text-xl leading-relaxed sm:text-2xl sm:leading-relaxed">{data.bottomLine}</p></div>
+            <div><p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-300">Your daily perspective · last {data.windowHours} hours</p><h1 className="mb-3 text-2xl font-semibold sm:text-3xl">Your Sentinel brief</h1><p className="text-xl leading-relaxed sm:text-2xl sm:leading-relaxed">{data.bottomLine}</p></div>
             <div className="flex gap-3 lg:flex-col">
               {[["investigate", "meet research rules", "text-sky-300"], ["monitor", "to watch", "text-amber-300"], ["waiting", "not enough data", "text-slate-300"]].map(([k, t, cls]) => (
-                <a key={k} href={k === "waiting" ? "#waiting" : k === "monitor" ? "#radar" : "#takes"} className="flex min-w-36 items-baseline gap-2 rounded-lg border border-border px-4 py-2.5 hover:bg-accent"><span className={`text-2xl font-semibold tabular-nums ${cls}`}>{data.counts[k]}</span><span className="text-sm text-muted-foreground">{t}</span></a>
+                <div key={k} className="flex min-w-36 items-baseline gap-2 rounded-lg border border-border px-4 py-2.5"><span className={`text-2xl font-semibold tabular-nums ${cls}`}>{data.counts[k]}</span><span className="text-sm text-muted-foreground">{t}</span></div>
               ))}
             </div>
           </section>
+
+          {data.status.lastScanAt && !data.status.scanCompleted && <p className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">The latest market scan was partial; some reports may still be missing. {data.status.pendingCount != null ? `${data.status.pendingCount} are queued for assessment.` : "Queue size is unavailable."}</p>}
 
           {/* Where to look first: selected cases with the reasons, or why nothing was selected */}
           <IdeaList Sheet={CaseSheet} />
 
           {/* Row 2: takes + side column */}
-          <div className="grid gap-6 lg:grid-cols-12">
+          <details className="rounded-xl border border-border p-4"><summary className="cursor-pointer font-semibold">More research and scan details</summary><div className="mt-5 grid gap-6 lg:grid-cols-12">
             <section id="takes" className="space-y-4 lg:col-span-8">
               <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Meet research rules</h2>
               {data.takes.length ? data.takes.map((t: Take) => <TakeCard key={t.caseId} t={t} onOpen={() => setOpen(t.caseId)} />) :
@@ -201,6 +204,8 @@ export function MorningBriefView({ embedded = false }: { embedded?: boolean }) {
               </Panel>
             </div>
           </div>
+
+          </details>
 
           {/* Row 3: waiting on data, folded */}
           <Collapsible id="waiting" className="rounded-xl border border-border bg-card">

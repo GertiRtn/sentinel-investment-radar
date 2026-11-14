@@ -1,6 +1,7 @@
 import {database} from '@/db/store';
 import {identity,json,failure,ApiError} from '@/lib/sentinel/api';
 import {caseIdea,casePrice,holdings,parseCase} from '@/lib/sentinel/case-idea';
+import {investmentReadiness} from '@/lib/sentinel/investment-readiness';
 export const dynamic='force-dynamic';
 
 /**
@@ -13,7 +14,8 @@ export async function GET(request:Request){try{
  const owner=await identity(request),url=new URL(request.url),caseId=url.searchParams.get('case')||'';
  const row=await database().prepare("SELECT id,created_at,body FROM signal_log WHERE id=? AND owner=? AND kind='discovery_case'").bind(caseId,owner).first<{id:string;created_at:string;body:string}>();
  if(!row)throw new ApiError(404,'Case not found.');
- const kase=parseCase(row),{context,idea,thesis}=await caseIdea(owner,kase,await holdings(owner));
- if(url.searchParams.get('prices')!=='1')return json({...context,idea,thesis:thesis(null),price:{status:'not_loaded',reason:'Price context loads only when you ask for it.'}});
- const price=await casePrice(kase);return json({...context,idea,thesis:thesis(price),price});
+ const kase=parseCase(row),{context,idea,thesis,match}=await caseIdea(owner,kase,await holdings(owner));
+ const investmentDecision=investmentReadiness(kase,context,match);
+ if(url.searchParams.get('prices')!=='1')return json({...context,idea,investmentDecision,thesis:thesis(null),price:{status:'not_loaded',reason:'Price context loads only when you ask for it.'}});
+ const price=await casePrice(kase);return json({...context,idea,investmentDecision,thesis:thesis(price),price});
 }catch(e){return failure(e)}}

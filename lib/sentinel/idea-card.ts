@@ -11,6 +11,7 @@
  * not a forecast and not an instruction to trade.
  */
 import type { EventMatch } from './event-match';
+import { plainBrief } from './plain-brief';
 
 export const IDEA_CARD_VERSION = 'idea-card-v1';
 type Line = { text: string; kind: 'reported_claim' | 'fact' | 'computed' | 'interpretation' | 'missing'; detail?: string | null };
@@ -42,7 +43,7 @@ export function ideaCard(input: { kase: any; context: any; score: any; match: Ev
   let label: string, text: string, tone: 'research' | 'watch' | 'wait' | 'doubt';
   if (match.level === 'name_conflict') { tone = 'doubt'; label = 'Probably not about this company'; text = match.reason + ' Treat everything below as unverified until you have read the original report.'; }
   else if (!v2) { tone = 'wait'; label = 'No judgment (older screen)'; text = 'This case was assessed with the first screen, which only checked that data existed. Sentinel does not form a view from it.'; }
-  else if (conclusion === 'INVESTIGATE') { tone = 'research'; label = 'Worth your research time now'; text = 'It meets all three research rules: a material event, the company in a direct role, and a P/E between 0 and 30. That is a reason to read further, not a recommendation.'; }
+  else if (conclusion === 'INVESTIGATE') { tone = 'research'; label = 'Worth your research time now'; text = 'A company development and its recorded share price make this worth looking into. The points below explain what Sentinel found; this is not a recommendation.'; }
   else if (conclusion === 'MONITOR') { tone = 'watch'; label = 'Watch, not a priority'; text = `The data is complete but it fails ${failed.length ? failed.join('; ') : 'at least one research rule'}.`; }
   else { tone = 'wait'; label = 'Not enough data to judge'; text = String(kase?.decision?.reason ?? kase?.reason ?? 'Required inputs are missing.'); }
   if (match.level === 'ticker_only' || match.level === 'named_in_summary') text += ` Company match is unconfirmed: ${match.reason}`;
@@ -83,6 +84,7 @@ export function ideaCard(input: { kase: any; context: any; score: any; match: Ev
     eventMatch: match,
     ideaType: { type: 'Event-driven', horizon: 'Days to months. Outcomes are measured at 5, 20, 60 and 120 trading days against SPY.', note: 'Long-term theme research is not built yet, so every case today starts from a news report.' },
     view: { tone, label, text, uncertainty, basis: 'Fixed published rules (research-screen-v2, evidence-score-v1, event-match-v1). Not a forecast, a probability or advice to trade.' },
+    plainBrief: plainBrief(kase, ctx, match),
     whyNow, evidenceFor: evidenceFor.slice(0, 8), counter: counter.slice(0, 8), missing, nextChecks: (ctx?.nextChecks ?? []).slice(0, 5),
     fit: input.fit,
   };

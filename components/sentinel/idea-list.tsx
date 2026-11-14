@@ -25,14 +25,16 @@ function Card({ i, onOpen }: { i: any; onOpen: (id: string) => void }) {
         <div><span className="text-base font-semibold">{i.symbol}</span>{i.company && <span className="text-sm text-muted-foreground"> · {i.company}</span>}
           <div className="mt-0.5 text-xs">{i.identity.confirmed ? <span className="text-sky-300">✓ {i.identity.label}</span> : <span className="text-amber-200">⚠ {i.identity.label}</span>}<span className="text-muted-foreground"> · {i.kind.label}</span></div></div>
         <div className="text-right"><span className={`rounded px-2 py-0.5 text-xs font-semibold ${i.tier === "meets_rules" ? "bg-sky-400/15 text-sky-200" : "bg-muted"}`}>{i.tier === "meets_rules" ? "Meets research rules" : "Close, not selected"}</span>
-          <div className="mt-1 text-xs text-muted-foreground" title={i.score.meaning}>Evidence {i.score.score === null ? "not scored" : `${i.score.score}/100`}</div></div>
+          <div className="mt-1 text-xs text-muted-foreground" title={i.score.meaning}>Checklist {i.score.score === null ? "not scored" : `${i.score.score}/100`} · not a forecast</div></div>
       </div>
       <p className="mt-2 text-sm">{i.event.url ? <a className="hover:underline" href={i.event.url} target="_blank" rel="noreferrer">{i.event.headline}<ExternalLink size={11} className="ml-1 inline" /></a> : i.event.headline}</p>
       <p className="text-xs text-muted-foreground">Reported by {i.event.source ?? "unknown source"}, {when(i.event.publishedAt)} · assessed {when(i.event.assessedAt)} · headline only, article not read</p>
-      <div className="mt-3 grid gap-3 text-xs md:grid-cols-2">
+      <div className="mt-4 grid gap-4 text-sm md:grid-cols-2">
         <div><Label>Reason for attention</Label><p>{i.thesis?.reason ? <>{i.thesis.reason.text} <span className="text-muted-foreground">({i.thesis.reason.basis}{i.thesis.reason.period ? `, period to ${i.thesis.reason.period}` : ""})</span></> : <span className="text-muted-foreground">{i.thesis?.reasonNote ?? "No sourced supporting observation yet."}</span>}</p>
           <p className="mt-0.5 text-muted-foreground">Screen: {i.view.label}.</p></div>
         <div><Label>Counterpoint</Label><p>{i.thesis?.counter ? <>{i.thesis.counter.status === "unknown" && <span className="mr-1 rounded bg-muted px-1 py-0.5 text-[10px] font-semibold uppercase">Unknown</span>}{i.thesis.counter.text}</> : <span className="text-muted-foreground">None supported by the stored records. That is not evidence of safety.</span>}</p></div>
+      </div>
+      <details className="mt-4 border-t border-border pt-3 text-xs"><summary className="cursor-pointer font-medium text-sky-300">Explore the evidence and price context</summary><div className="mt-3 grid gap-3 md:grid-cols-2">
         <div><Label>Financial changes (SEC filings)</Label>
           {i.changes.length ? <ul>{i.changes.map((c: any) => <li key={c.label}>{c.label} <span className="font-semibold tabular-nums">{pct(c.changePct)}</span> <span className="text-muted-foreground">vs {c.comparison}, to {c.periodEnd} · {c.url ? <a className="underline" href={c.url} target="_blank" rel="noreferrer">filed {c.filed}</a> : `filed ${c.filed ?? "unknown"}`}</span></li>)}</ul> : <p className="text-muted-foreground">{i.changesNote}</p>}</div>
         <div><Label>Price since the news (vs SPY)</Label><PriceMove caseId={i.caseId} symbol={i.symbol} /></div>
@@ -42,7 +44,8 @@ function Card({ i, onOpen }: { i: any; onOpen: (id: string) => void }) {
         <div><Label>Missing, and what to check next</Label>
           <ul className="text-muted-foreground">{i.missing.map((m: string) => <li key={m}>• {m}</li>)}</ul>{i.nextCheck && <p>Next: {i.nextCheck}</p>}</div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><button onClick={() => onOpen(i.caseId)} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Open full case and thesis</button><a href={`/company?symbol=${encodeURIComponent(i.symbol)}`} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Company page</a><span className="text-muted-foreground">{i.kind.note}</span></div>
+      </details>
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs"><button onClick={() => onOpen(i.caseId)} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Open full case and thesis</button><a href={`/company?symbol=${encodeURIComponent(i.symbol)}`} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Company page</a><span className="text-muted-foreground">{i.kind.note}</span></div>
     </article>
   );
 }
@@ -58,10 +61,10 @@ export function IdeaList({ Sheet, compact = false }: { Sheet: ComponentType<{ c:
         {error && <p role="alert" className="mt-1 text-sm text-amber-200">{error}</p>}
         {!d && !error && <p className="mt-1 text-sm text-muted-foreground">Selecting cases…</p>}
         {d && <><p className="mt-1 text-lg">{d.headline}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{c.assessed} assessed: {c.meetsRules} meet the rules, {c.watch} to watch, {c.notEnoughData} without enough data{c.wrongCompany ? `, ${c.wrongCompany} probably about a different company` : ""}{c.olderScreen ? `, ${c.olderScreen} from the older screen` : ""}.
-            {d.topBlockers.length > 0 && <> Most common gap: {d.topBlockers.map((b: any) => `${b.reason} (${b.cases})`).join("; ")}.</>} {d.note}</p></>}
+          <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">How this list was selected</summary><p className="mt-2">{c.assessed} assessed: {c.meetsRules} meet the rules, {c.watch} to watch, {c.notEnoughData} without enough data{c.wrongCompany ? `, ${c.wrongCompany} probably about a different company` : ""}{c.olderScreen ? `, ${c.olderScreen} from the older screen` : ""}.
+            {d.topBlockers.length > 0 && <> Most common gap: {d.topBlockers.map((b: any) => `${b.reason} (${b.cases})`).join("; ")}.</>} {d.note}</p></details></>}
       </div>
-      {d && d.ideas.length > 0 && <div className={compact ? "grid gap-3" : "grid gap-3"}>{d.ideas.map((i: any) => <Card key={i.caseId} i={i} onOpen={open} />)}</div>}
+      {d && d.ideas.length > 0 && <div className={compact ? "grid gap-4" : "grid gap-4 lg:grid-cols-2"}>{d.ideas.map((i: any) => <Card key={i.caseId} i={i} onOpen={open} />)}</div>}
       {d && d.ideas.length === 0 && <div className="rounded-xl border border-border bg-card p-4 text-sm">
         <p>Nothing to put in front of you yet.</p>
         <p className="mt-1 text-xs text-muted-foreground">{c.assessed === 0 ? "The hourly scan has not produced any cases in this period. Check the scan status on Discover." : "You can still review every assessed case, ranked by evidence, on Discover."}</p>
