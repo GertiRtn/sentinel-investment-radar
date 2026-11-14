@@ -37,7 +37,7 @@ export function ThesisPanel({ t, onLoadPrices, loadingPrice, caseId, marketModel
   const a = t.appeared, v = t.priceValuation.valuation, m = t.priceValuation.priceMove;
   return (
     <div className="space-y-4 rounded-lg border border-sky-400/40 p-3 text-xs">
-      <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm font-semibold">Investment thesis</h4><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">Rules only · no AI · not advice</span></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm font-semibold">Investment thesis{t.symbol && <a href={`/company?symbol=${encodeURIComponent(t.symbol)}`} className="ml-2 text-[11px] font-normal text-muted-foreground underline">Company page</a>}</h4><span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">Rules only · no AI · not advice</span></div>
       {!t.promoted && <p className="rounded border border-red-400/40 bg-red-400/10 p-2 text-red-100">Sentinel does not put this forward as an idea: the report is probably about a different company.</p>}
 
       <section><H n="A">Why this case appeared</H>
