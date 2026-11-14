@@ -105,7 +105,7 @@ export function WhatChanged({ caseId, symbol }: { caseId: string; symbol: string
   if (!d) return <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">Loading what changed…</div>;
   const ev = d.event, p = d.price, v = d.valuation;
   return (<>
-    {d.thesis && <ThesisPanel t={d.thesis} onLoadPrices={loadPrices} loadingPrice={loadingPrice} caseId={caseId} />}
+    {d.thesis && <ThesisPanel t={d.thesis} onLoadPrices={loadPrices} loadingPrice={loadingPrice} caseId={caseId} marketModel={d.price?.marketModel} />}
     {d.idea && <IdeaCard idea={d.idea} />}
     <div className="space-y-4 rounded-lg border border-border p-3 text-sm">
       <h4 className="font-semibold">What changed?</h4>

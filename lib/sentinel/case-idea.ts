@@ -4,6 +4,7 @@ import {companyFile} from './edgar';
 import {buildEvidencePack} from './evidence-pack';
 import {whatChanged,priceContext} from './case-context';
 import {archivedDailyBars as bars} from './daily-bars';
+import {marketModel} from './market-model';
 import {caseEvidenceScore} from './evidence-score';
 import {caseEventMatch} from './event-match';
 import {ideaCard,portfolioFit,type PortfolioFit} from './idea-card';
@@ -44,9 +45,11 @@ export async function casePrice(kase:any){
  if(!publishedAt||!Number.isFinite(Date.parse(publishedAt)))return fail('The event has no valid publication time.');
  const creds=env as unknown as {ALPACA_DATA_KEY_ID?:string;ALPACA_DATA_SECRET?:string};
  if(!creds.ALPACA_DATA_KEY_ID||!creds.ALPACA_DATA_SECRET)return fail('Market data is not connected.');
- const day=86400000,start=new Date(Date.parse(publishedAt)-45*day).toISOString().slice(0,10),end=new Date(Math.min(Date.now(),Date.parse(publishedAt)+45*day)).toISOString().slice(0,10);
+ const day=86400000,start=new Date(Date.parse(publishedAt)-400*day).toISOString().slice(0,10),end=new Date(Math.min(Date.now(),Date.parse(publishedAt)+45*day)).toISOString().slice(0,10);
  try{
   const [stock,spy]=await Promise.all([bars(symbol,start,end,creds as any),bars('SPY',start,end,creds as any)]);
-  return priceContext({stock:stock.payload,spy:spy.payload,symbol,publishedAt,caseAt:String(kase.createdAt),fetchedAt:stock.fetchedAt<spy.fetchedAt?stock.fetchedAt:spy.fetchedAt,source:'Alpaca IEX daily bars',adjustment:'all',rawIds:[stock.rawId,spy.rawId]});
+  const input={stock:stock.payload,spy:spy.payload,symbol,publishedAt,caseAt:String(kase.createdAt),fetchedAt:stock.fetchedAt<spy.fetchedAt?stock.fetchedAt:spy.fetchedAt,source:'Alpaca IEX daily bars',adjustment:'all',rawIds:[stock.rawId,spy.rawId]};
+  // The market model reads the same archived bars; nothing is stored and no case or outcome changes.
+  return {...priceContext(input),marketModel:marketModel(input)};
  }catch(e){return fail(e instanceof Error?e.message:'The price source could not be used.');}
 }
