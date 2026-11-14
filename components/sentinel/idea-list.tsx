@@ -42,7 +42,7 @@ function Card({ i, onOpen }: { i: any; onOpen: (id: string) => void }) {
         <div><Label>Missing, and what to check next</Label>
           <ul className="text-muted-foreground">{i.missing.map((m: string) => <li key={m}>• {m}</li>)}</ul>{i.nextCheck && <p>Next: {i.nextCheck}</p>}</div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><button onClick={() => onOpen(i.caseId)} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Open full case and thesis</button><span className="text-muted-foreground">{i.kind.note}</span></div>
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs"><button onClick={() => onOpen(i.caseId)} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Open full case and thesis</button><a href={`/company?symbol=${encodeURIComponent(i.symbol)}`} className="rounded-md border border-border px-2.5 py-1 hover:bg-accent">Company page</a><span className="text-muted-foreground">{i.kind.note}</span></div>
     </article>
   );
 }

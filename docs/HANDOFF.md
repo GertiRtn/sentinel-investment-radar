@@ -539,3 +539,19 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 **What this is not:** a forecast, a probability, evidence of an edge, or evidence that an event caused a move. Correct arithmetic on one stock says nothing about whether market-adjusted moves after Sentinel's cases are useful; that needs the outcome record by label and band.
 
 **Next (each its own decision):** add market-adjusted moves to the outcome record as a separately versioned, append-only observation, so outcomes by evidence band can be read market-adjusted; a beta line on the future company page; the pairs study only with the prerequisites in `docs/PAIRS-STUDY-BRIEF.md`.
+
+## 2026-11-14 (later) — Claude Code (Opus): company page v1 (founder: "fix it and update Sentinel", after the Lovable prototype)
+
+**Baseline:** main f586e11 (#34 merged); 212/212. Branch `company-page`. Not published.
+
+**Design reference:** Lovable project "Signal Scout Investment Desk" (sample data only). Read through the Lovable connector; no Lovable credits spent and nothing copied from it except the layout. Fixed against the prototype: each event's own company match (the prototype hard-coded "named"); user-facing status labels instead of the stored INVESTIGATE; automatic chart scales; "View as table" for both charts; the assessment states what is actually missing (the prototype's sample contradicted itself: "missing a P/E under 30" next to P/E 24.1).
+
+**Built:** `/company?symbol=` (`app/company/page.tsx`, `components/sentinel/company-page.tsx`), `GET /api/company-page` (owner-scoped, read-only), pure builder `lib/sentinel/company-page.ts` (`company-page-v1`). Content and sources are listed in AGENTS.md. Entry points: "Company page" on idea cards and in the thesis panel header. "Open full research" opens the existing case sheet (WhatChanged plus Research team) in a side panel; Escape or a backdrop click closes it. Follow uses the existing `POST /api/watchlist`. "Practice with virtual money" links to the Practice tab (it works at any hour; the note says trades price only in US market hours). No new rule, score, label, schema or record kind. The only writes are the shared IEX price archive (as the case sheet already does) and Follow, which is the existing watchlist action.
+
+**Verified:** 218/218 (+5 pure builder tests in `tests/company-page.test.mjs`: labels never promote v1 INVESTIGATE; key-figure change rules (negative base, two-year gap), negative FCF kept, P/E only from the case; quarterly gap; price ranges, staleness and markers; per-event match and verification, wrong-company not promoted, no-case state, no advice wording. +1 Miniflare route test: real request with mocked bars, owner isolation 404, unknown ticker 404, bad ticker 400, case unchanged, nothing appended to the record log.) `tsc` clean, build OK.
+
+**Not verified:** any browser rendering (desktop or mobile), keyboard navigation in a real browser, real SEC figures and real IEX prices on the page. The sandbox cannot reach the founder's Chrome or the Site's database.
+
+**Before publishing (ask Codex):** confirm the deployed Site has no code that is missing from GitHub `main`. Earlier briefs mention a mobile case redesign and a decision-preparation view that are not in `main`; publishing `main` would replace them. Then open `/company?symbol=<a ticker with a case>` on desktop and phone and check that the price chart, key figures, financials, events, side panel and Follow work.
+
+**Known limits:** the case lookup uses `json_extract(body,'$.symbol')` over the owner's discovery cases (a scan; fine at today's size, revisit with the planned index). Companies are reachable only if they have a case or are followed; there is no global search yet. Industry code is today's SEC code, shown as a number.
