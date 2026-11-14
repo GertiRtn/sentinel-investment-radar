@@ -73,7 +73,7 @@ function KeyFigures({ rows }: { rows: any[] }) {
       <dl className="divide-y divide-border">{rows.map(f => (
         <div key={f.metric} className="flex items-start justify-between gap-4 py-3">
           <div className="min-w-0"><dt className="flex items-center gap-1 text-sm">{f.label}<span tabIndex={0} title={f.help} aria-label={f.help} className="inline-flex size-6 items-center justify-center text-muted-foreground"><Info size={13} /></span></dt>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">{f.value !== null ? <>{f.periodEnd ? `Year to ${day(f.periodEnd)}` : ""}{f.changeNote ? `${f.periodEnd ? " · " : ""}${f.changeNote}` : ""}{f.source?.url ? <> · <a className="underline" href={f.source.url} target="_blank" rel="noreferrer">{f.source.form} filed {f.source.filed}</a></> : ""}</> : f.reason}</p></div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">{f.value !== null ? <>{f.periodEnd ? `${f.metric === "pe" ? "EPS for year to" : "Year to"} ${day(f.periodEnd)}` : ""}{f.changeNote ? `${f.periodEnd ? " · " : ""}${f.changeNote}` : ""}{f.source?.url ? <> · <a className="underline" href={f.source.url} target="_blank" rel="noreferrer">{f.source.form} filed {f.source.filed}</a></> : ""}</> : f.reason}</p></div>
           <dd className="shrink-0 text-right">{f.value === null ? <Unknown why={f.reason} /> : <><span className="text-xl font-semibold tabular-nums">{f.unit === "x" ? f.value.toFixed(1) : money(f.value)}</span>{typeof f.changePct === "number" && <div className="text-xs">{move(f.changePct)}</div>}</>}</dd>
         </div>))}</dl>
     </Card>
@@ -82,7 +82,9 @@ function KeyFigures({ rows }: { rows: any[] }) {
 
 function Financials({ f }: { f: any }) {
   const [period, setPeriod] = useState<"Annual" | "Quarterly">("Annual"), [table, setTable] = useState(false);
-  const rows = period === "Annual" ? f.annual : f.quarterly, scaled = rows.map((r: any) => ({ ...r, revenueM: r.revenue !== null ? r.revenue / 1e6 : null, netIncomeM: r.netIncome !== null ? r.netIncome / 1e6 : null }));
+  const rows = period === "Annual" ? f.annual : f.quarterly;
+  const peak = Math.max(0, ...rows.flatMap((r: any) => [Math.abs(r.revenue ?? 0), Math.abs(r.netIncome ?? 0)])), big = peak >= 1e9, div = big ? 1e9 : 1e6, u = big ? "B" : "M";
+  const scaled = rows.map((r: any) => ({ ...r, revenueM: r.revenue !== null ? r.revenue / div : null, netIncomeM: r.netIncome !== null ? r.netIncome / div : null }));
   const has = rows.some((r: any) => r.revenue !== null || r.netIncome !== null);
   return (
     <Card label="Financials">
@@ -92,21 +94,21 @@ function Financials({ f }: { f: any }) {
           <table className="mt-4 w-full text-left text-xs tabular-nums"><caption className="sr-only">{period} revenue and net income</caption><thead className="text-muted-foreground"><tr><th className="py-1 font-medium">Period</th><th className="font-medium">Revenue</th><th className="font-medium">Net income</th><th className="font-medium">Net margin</th></tr></thead>
             <tbody>{rows.map((r: any, i: number) => <tr key={(r.periodEnd ?? "gap") + i} className="border-t border-border"><td className="py-1">{r.gap ? "Not reported separately" : r.period}</td><td>{money(r.revenue) ?? "Unknown"}</td><td>{money(r.netIncome) ?? "Unknown"}</td><td>{typeof r.margin === "number" ? `${r.margin.toFixed(1)}%` : "—"}</td></tr>)}</tbody></table>
         ) : (
-          <div className="mt-4 h-64" role="img" aria-label={`${period} revenue and net income in USD millions.`}>
+          <div className="mt-4 h-64" role="img" aria-label={`${period} revenue and net income in USD ${big ? "billions" : "millions"}.`}>
             <ResponsiveContainer width="100%" height="100%"><ComposedChart data={scaled} margin={{ top: 8, right: 0, bottom: 4, left: 0 }}>
               <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="3 6" />
               <XAxis dataKey="period" axisLine={false} tickLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} />
-              <YAxis yAxisId="m" tickFormatter={(v: number) => `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}M`} width={70} axisLine={false} tickLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} />
+              <YAxis yAxisId="m" tickFormatter={(v: number) => `$${v.toLocaleString("en-US", { maximumFractionDigits: big ? 1 : 0 })}${u}`} width={64} axisLine={false} tickLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} />
               <YAxis yAxisId="p" orientation="right" tickFormatter={(v: number) => `${v.toFixed(0)}%`} width={40} axisLine={false} tickLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} />
               <ReferenceLine yAxisId="m" y={0} stroke="var(--muted-foreground)" />
-              <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} formatter={(v: any, n: any) => [v === null || v === undefined ? "Unknown" : n === "Net margin" ? `${Number(v).toFixed(1)}%` : `$${Number(v).toFixed(1)}M`, n]} />
+              <Tooltip contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 12, fontSize: 12 }} formatter={(v: any, n: any) => [v === null || v === undefined ? "Unknown" : n === "Net margin" ? `${Number(v).toFixed(1)}%` : `$${Number(v).toFixed(big ? 2 : 1)}${u}`, n]} />
               <Bar yAxisId="m" name="Revenue" dataKey="revenueM" fill="#6366f1" radius={[4, 4, 0, 0]} maxBarSize={40} isAnimationActive={false} />
               <Bar yAxisId="m" name="Net income" dataKey="netIncomeM" fill="#2dd4bf" radius={[4, 4, 0, 0]} maxBarSize={24} isAnimationActive={false} />
               <Line yAxisId="p" name="Net margin" dataKey="margin" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
             </ComposedChart></ResponsiveContainer>
           </div>
         )}
-      <p className="mt-2 text-[11px] text-muted-foreground">{f.note} USD; bars in millions.</p>
+      <p className="mt-2 text-[11px] text-muted-foreground">{f.note} USD; bars in {big ? "billions" : "millions"}.</p>
       <p className="mt-3 border-t border-border pt-3 text-[11px] text-muted-foreground">Source: SEC filings{f.source ? <> · latest {f.source.url ? <a className="underline" href={f.source.url} target="_blank" rel="noreferrer">{f.source.form} filed {f.source.filed}</a> : `${f.source.form} filed ${f.source.filed}`}</> : ""}</p>
     </Card>
   );
@@ -128,8 +130,8 @@ function Assessment({ a, note, dv, onOpen }: { a: any; note: string | null; dv: 
         </div>
         <ul className="mt-5 space-y-3 text-[13px] leading-relaxed">
           <li className="flex gap-3"><Plus size={16} className="mt-0.5 shrink-0 text-sky-400" aria-label="Supports" /><span>{a.reason ?? <span className="text-muted-foreground">{a.reasonNote}</span>}</span></li>
-          <li className="flex gap-3"><Minus size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-label="Challenges" /><span className={a.counter?.unknown ? "text-muted-foreground" : ""}>{a.counter?.text ?? <span className="text-muted-foreground">No evidence-supported counterpoint was found. That is not evidence of safety.</span>}</span></li>
-          <li className="flex gap-3"><HelpCircle size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-label="Unknown" /><span className="text-muted-foreground">{a.unknown}</span></li>
+          <li className="flex gap-3"><Minus size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-label="Challenges" /><span>{a.counter && !a.counter.unknown ? a.counter.text : <span className="text-muted-foreground">No evidence-supported counterpoint was found. That is not evidence of safety.</span>}</span></li>
+          <li className="flex gap-3"><HelpCircle size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-label="Unknown" /><span className="text-muted-foreground">{a.counter?.unknown ? a.counter.text : a.unknown}</span></li>
         </ul>
         <div className="mt-4 flex flex-wrap gap-2"><Chip tone={VER_TONE[a.verification.state] ?? ""}>Event: {a.verification.label}</Chip><Chip tone={MATCH_TONE[a.match.level] ?? ""}>Company match: {a.match.label}</Chip>{a.analystOpinion && <Chip>Analyst opinion</Chip>}</div>
         <p className="mt-3 text-[11px] text-muted-foreground">Latest report published {day(a.publishedAt)} · assessed {day(a.assessedAt)}{a.earlierEvents ? ` · ${a.earlierEvents} earlier event${a.earlierEvents === 1 ? "" : "s"} below` : ""}</p>

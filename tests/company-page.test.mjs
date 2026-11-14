@@ -28,7 +28,8 @@ test('key figures: reported values with period and source; like-for-like change 
  assert.equal(by.revenue.value,110e6);assert.ok(Math.abs(by.revenue.changePct-10)<1e-9);assert.match(by.revenue.source.url,/^https:\/\/www\.sec\.gov\/Archives\/edgar\/data\/101\/000000010126000001\/$/);
  assert.equal(by.net_income.value,8e6);assert.equal(by.net_income.changePct,null,'a negative base gives no percentage change');assert.match(by.net_income.changeNote,/non-positive base/);
  assert.equal(by.fcf.value,-12e6,'negative free cash flow is kept');assert.match(by.fcf.help,/Calculated by Sentinel/);
- assert.equal(by.pe.value,24.1);assert.match(by.pe.changeNote,/Last close/);
+ assert.equal(by.pe.value,24.1);assert.match(by.pe.changeNote,/^Price: Last close \(\$48\.12\)/);
+ const mid=keyFigures(kase('c2',{price:{status:'indicative',ratio:23.3,basis:'live_midpoint',priceLabel:'IEX midpoint'}}),[],null).find(r=>r.metric==='pe');assert.ok(!/IEX midpoint \(IEX midpoint\)/.test(mid.changeNote),'no repeated label');
  const none=Object.fromEntries(keyFigures(null,[],null).map(r=>[r.metric,r]));for(const m of ['pe','revenue','net_income','cfo','fcf']){assert.equal(none[m].value,null);assert.ok(none[m].reason,m+' says why it is unknown');}
  const gap=keyFigures(null,[fact('revenue','2023-12-31',90e6),fact('revenue','2025-12-31',110e6)],null).find(r=>r.metric==='revenue');assert.equal(gap.changePct,null,'two years apart is not a yearly change');
  assert.equal(filingUrl('101','bad'),null);
