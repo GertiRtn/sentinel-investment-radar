@@ -16,7 +16,10 @@
 import { caseEvidenceScore } from './evidence-score';
 import { caseEventMatch } from './event-match';
 
-export const DISCOVER_RANK_VERSION = 'discover-rank-v2';
+import { caseNewsDirection, showableAsIdea } from './news-direction';
+
+// v3 (2026-11-15): bad or mixed news is listed after good and neutral news; probable wrong companies stay last.
+export const DISCOVER_RANK_VERSION = 'discover-rank-v3';
 export const DISCOVER_WINDOW_DAYS = 7;
 const LABEL_ORDER: Record<string, number> = { INVESTIGATE: 0, MONITOR: 1, WAIT: 2 };
 
@@ -30,9 +33,10 @@ export function rankCases(cases: any[], now: string, windowDays = DISCOVER_WINDO
     scored.sort((a, b) => (b.e.score ?? -1) - (a.e.score ?? -1) || String(b.c.createdAt).localeCompare(String(a.c.createdAt)));
     const { c, e } = scored[0];
     const v2 = c?.decision?.version === 'research-screen-v2';
-    const match = caseEventMatch(c);
+    const match = caseEventMatch(c), dir = caseNewsDirection(c);
     return {
       eventMatch: { level: match.level, label: match.label, reason: match.reason, confirmed: match.confirmed },
+      newsDirection: { direction: dir.direction, label: dir.label, text: dir.text },
       caseId: c.id, symbol, company: c?.identity?.name ?? null, headline: c?.event?.headline ?? '', url: c?.event?.url ?? null,
       source: c?.event?.source ?? null, publishedAt: c?.event?.publishedAt ?? null, assessedAt: c.createdAt,
       label: v2 ? c.conclusion : null, screenVersion: c?.decision?.version ?? null,
@@ -44,6 +48,8 @@ export function rankCases(cases: any[], now: string, windowDays = DISCOVER_WINDO
   rows.sort((a, b) => {
     const ca = a.eventMatch.level === 'name_conflict', cb = b.eventMatch.level === 'name_conflict';
     if (ca !== cb) return ca ? 1 : -1;
+    const ba = !showableAsIdea(a.newsDirection), bb = !showableAsIdea(b.newsDirection);
+    if (ba !== bb) return ba ? 1 : -1;
     if ((a.score === null) !== (b.score === null)) return a.score === null ? 1 : -1;
     return (b.score ?? 0) - (a.score ?? 0)
       || (LABEL_ORDER[a.label ?? ''] ?? 3) - (LABEL_ORDER[b.label ?? ''] ?? 3)

@@ -67,7 +67,7 @@ test('stored score is used as recorded; older cases are recomputed from stored f
 
 test('morning brief ranks strong cases by evidence score and names it in the bottom line',()=>{
  const NOW=AS_OF,h=x=>new Date(Date.parse(NOW)-x*3600000).toISOString();
- const k=(sym,score)=>({id:'c-'+sym,symbol:sym,createdAt:h(2),conclusion:'INVESTIGATE',decision:{version:'research-screen-v2'},rules:[],event:{headline:sym+' news',publishedAt:sym==='LOW'?h(1):h(5),analysis:{topics:[]}},evidenceScore:{...full({}),score,band:S.scoreBand(score)}});
+ const k=(sym,score)=>({id:'c-'+sym,symbol:sym,createdAt:h(2),conclusion:'INVESTIGATE',decision:{version:'research-screen-v2'},rules:[],event:{headline:sym+' wins contract',publishedAt:sym==='LOW'?h(1):h(5),analysis:{topics:[]}},evidenceScore:{...full({}),score,band:S.scoreBand(score)}});
  const r=M.buildMorningBrief({now:NOW,cases:[k('LOW',55),k('HIGH',90)],watch:[],lastScan:{at:h(1),completed:true,pages:1},pendingCount:0,lastOutcomeAt:null,outcomeCounts:{},shadow:{enabled:false,readings:0}});
  assert.deepEqual(r.takes.map(t=>t.symbol),['HIGH','LOW']);
  assert.equal(r.takes[0].evidence.score,90);
