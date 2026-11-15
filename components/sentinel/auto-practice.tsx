@@ -33,10 +33,10 @@ export function AutoPractice() {
   }
   const s = d?.state, run = d?.run, last = d?.lastRun;
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className="auto-practice-card rounded-xl border border-border bg-card p-5">
       <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div><h3 className="font-semibold">Automated experiment (virtual)</h3>
-          <p className="text-xs text-muted-foreground">Sentinel picks cases, opens and closes virtual positions by fixed rules, and records every choice, including the ones it skipped. Separate from your own practice trades above.</p></div>
+          <p className="text-xs text-muted-foreground">Sentinel picks cases, opens and closes virtual positions by fixed rules, and records every choice, including the ones it skipped. Separate from your own practice portfolio below.</p></div>
         {d && <div className="flex gap-2">
           {d.status !== "active" && <button onClick={() => act("start")} disabled={!!busy} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{busy === "start" ? "Starting…" : d.status === "stopped" ? "Start a new experiment" : "Start experiment"}</button>}
           {d.status !== "not_started" && <button onClick={() => act("run")} disabled={!!busy} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-50">{busy === "run" ? "Checking…" : "Run a check now"}</button>}

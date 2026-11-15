@@ -520,6 +520,17 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 
 **Next:** after publishing, run the check on a few real cases (EMCOR if still present) and read the spans by eye; if the counterparty rule misses often, look at the misses before loosening it. Do not feed `supported` into the screen, score, ranking or the experiment without a new version and the founder's approval.
 
+## 2026-11-14 — Plain-English case brief
+
+The first case screen now explains why a report appeared, gives up to two numbered, sourced comparable growth observations when available, and explains the recorded P/E in everyday terms. It states when comparable positives or price data are unavailable and does not change research decisions, ranking or Practice. News remains a reported claim. The display is deterministic and does not imply that a case is a buy recommendation; check the source and limitations. Existing source details remain in the expandable sections. The case-specific financial explanation is limited by the available recorded data; it is not an AI-generated investment thesis.
+
+## 2026-11-14 — Investment decision preparation
+
+Founder requested eventual buy/no-buy recommendations. Added investment-readiness-v1 as a read-only decision-preparation view, separate from screening and the frozen Practice experiment. It displays recorded sales, annual net income and operating cash flow when available, a historical price/earnings comparison, event-evidence guidance and explicit blockers. It always reports insufficient evidence for a recommendation: the current data and unvalidated rules cannot support a meaningful buy/no-buy conclusion. No changes to historical cases, rankings, rules or orders. A future actionable model requires a separately specified and validated method, point-in-time inputs and versioning; user authorization to pursue buy/no-buy output is recorded here.
+
+## 2026-11-14 — Mobile case overview redesign
+
+The case sheet now has a dark mobile-first overview with Overview, Financials and News tabs, a research-status card, sourced key metrics and an annual/quarterly revenue comparison where two compatible non-negative periods exist. Data remains from the original case-time evidence; no projections, prices or buy recommendations are invented. Existing source, thesis, verification, research team and virtual Practice controls remain in the case. Comparison data that cannot be charted is explicitly unavailable. No screening or experiment logic changed. The managed preview failed to start, so the layout was not visually verified in a browser.
 ## 2026-11-14 — Claude Code (Opus): market comparison around events (founder brief "event-driven factor analysis")
 
 **Baseline:** main 54304eb (#33 merged); 204/204 tests. Branch `market-model`. Not published. The live Site was not checked against GitHub in this session; the founder's briefs mention a mobile case redesign and a decision-preparation view that are not in GitHub `main` or any branch I could see. Neither is in this source, so neither could be preserved or broken here.
@@ -556,6 +567,15 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 
 **Known limits:** the case lookup uses `json_extract(body,'$.symbol')` over the owner's discovery cases (a scan; fine at today's size, revisit with the planned index). Companies are reachable only if they have a case or are followed; there is no global search yet. Industry code is today's SEC code, shown as a number.
 
+<!-- The two entries below were written on the deployed Site by Codex (14 Nov) and reconciled into GitHub on 15 Nov. -->
+### Workspace visual refresh
+- Extended the company page's dark visual language to the main workspace, navigation and research cards, with mobile-sized controls. Existing screen decisions and data flows are unchanged.
+- The managed local preview timed out during startup in this environment; verify the published screens visually on mobile and desktop.
+
+## 2026-11-14 — Remaining workspace pages visual refresh
+
+Refined Discover, Following and Practice using the dark company-page visual language. Discover introduces the research feed and keeps provider limitations visible in a disclosure; Following uses clearer company cards and direct company-page links; Practice presents manual positions as cards on small screens while retaining the full desktop table and all virtual-portfolio operations. Older watchlist controls, sample alerts and market news remain available in expandable sections. No data, screening, evidence-score or automated experiment logic was changed. Managed preview startup timed out; mobile and desktop rendering and interaction need visual verification.
+
 ## 2026-11-14 (afternoon) — Claude Code (Opus): company page polish after the first live check
 
 **Live check (read-only, Chrome, ~12:45 UK):** #35 is published. `/company?symbol=EME` renders with real data (last close $659.47 on 13 Nov, 6M chart with the event marker, SEC key figures with 10-K links, FY2021–25 financials, assessment "Meets research rules", evidence 100/100). EMCOR is the first case shown as meeting all three research rules. `/api/pipeline`: the 11:18 hourly run was complete in 82 s (filings 38 s, news 4 s, discovery <1 s, assessment 38 s, outcomes idle, experiment 2 s). Single-stage runs at 12:22–12:23 (probably Codex's post-publish check). No recurring assessment-only schedule was seen yet.
@@ -582,3 +602,25 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 6. Company type uses today's SIC code (as the spec states).
 
 **Next:** after publishing, run "Assess the investment case" on EME, SIEB, GOAI and ROLR from their company pages and review the output by hand against the filings (illustrative, not tests). Do not use verdicts for notifications or experiments before that review.
+
+## 2026-11-15 (evening) — Claude Code (Opus): Site and GitHub reconciled
+
+**What happened:** Codex could not publish #37 because the Site's source has a separate Git history. On comparison, the Site held work that was not in GitHub: 4 new files and changes to 19 others. Codex pushed it as `site-snapshot-2026-11-15` (one commit on top of `main` 3c434d1; tree verified equal to the deployed Site).
+
+**Finding:** the Site was exactly #35 (`bd0e9ed`) plus Codex's own work in 20 files:
+- case overview (`case-overview.tsx`, Overview / Financials / News tabs);
+- `plain-brief.ts`;
+- `investment-readiness.ts` (always "insufficient for recommendation", with blockers);
+- Practice notes made optional;
+- a dark visual refresh of Brief, Discover, Following and Practice;
+- 2 HANDOFF entries.
+
+It did not have #36 (company page polish) or #37 (investment case).
+
+**Reconciliation (branch `reconcile-site-2026-11-15`):** `main` plus the Site's own diff (`bd0e9ed..site-snapshot`), applied three ways. Only `docs/HANDOFF.md` conflicted (both sides appended); both are kept, the Site's entries first and marked. Check: the result differs from the Site snapshot *only* by #36 and #37 (9 files), so nothing from the Site was lost. 242/242 tests (239 + the Site's 3), `tsc` clean, build OK. AGENTS.md: Practice notes optional, the case overview and readiness note described, and a new rule that GitHub `main` is the single source of truth.
+
+**Review notes for the founder (not changed):**
+- The Site's case overview and readiness note use the phrase "buy decision" in negated form ("not enough evidence yet for a buy decision"). Invariant 7 forbids buy/sell wording in case bodies; this negation was kept because it is the founder's live wording, but it should be confirmed or reworded.
+- The case overview colours revenue change green/red (direction of a reported figure, not a check).
+
+**Next:** merge, then Codex publishes `main` as a normal commit on the Site's branch (the Site tree must then equal `main`). After that, run the investment case on EME, SIEB, GOAI and ROLR and review.

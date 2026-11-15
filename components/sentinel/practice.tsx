@@ -95,9 +95,9 @@ export function Practice() {
   const input = "w-full rounded-md border border-border bg-background px-3 py-2 text-sm";
 
   return (
-    <section className="mx-auto max-w-6xl space-y-6 py-2">
+    <section className="practice-page mx-auto max-w-6xl space-y-6 py-2">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h2 className="text-xl font-semibold">Practice</h2><p className="text-sm text-muted-foreground">Virtual money only. First Sentinel’s automated experiment, then your own manual trades. Each has its own $10,000 and is compared with the same dollars in SPY.</p></div>
+        <div><p className="section-kicker">LEARN AS YOU GO</p><h2 className="page-heading">Practice</h2><p className="page-subtitle">Explore ideas with virtual money. Your portfolio and Sentinel’s experiment are separate, each with its own $10,000 starting balance.</p></div>
         <button onClick={load} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"><RefreshCw size={14} className={loading ? "animate-spin" : ""} />Updates every minute</button>
       </div>
       {error && <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-200" role="alert">{error}</div>}
@@ -112,7 +112,7 @@ export function Practice() {
         <p className="text-sm text-muted-foreground">A separate $10,000 that only you trade, with your own thesis and conviction. Nothing here is opened or closed by Sentinel.</p>
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-6">
+      <div className="practice-overview rounded-xl border border-border bg-card p-6">
         <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
           <Stat label="Portfolio value" value={s ? money(s.equityCents) : "Loading…"} sub={s && s.equityCents === null ? "A position has no live price right now" : "Cash + open positions at live prices"} />
           <Stat label="Your return" value={pct(s?.returnPct)} className={tone(s?.returnPct)} sub={`since start (${money(s?.startCents)})`} />
@@ -138,7 +138,7 @@ export function Practice() {
           <div className="rounded-xl border border-border bg-card p-5">
             <h3 className="mb-3 font-semibold">Open positions</h3>
             {s?.open?.length ? (
-              <div className="overflow-x-auto"><table className="w-full text-sm">
+              <><div className="practice-desktop-table overflow-x-auto"><table className="w-full text-sm">
                 <thead className="text-left text-xs text-muted-foreground"><tr><th className="pb-2">Symbol</th><th>Invested</th><th>Now</th><th>Return</th><th>vs SPY</th><th>Days</th><th>Conviction</th><th>Evidence</th><th></th></tr></thead>
                 <tbody className="divide-y divide-border">{s.open.map((p: any) => (
                   <tr key={p.positionId} className="align-top">
@@ -152,7 +152,12 @@ export function Practice() {
                     <td className="py-2 tabular-nums">{p.evidenceScore ?? "—"}</td>
                     <td className="py-2 text-right"><button disabled={busy} onClick={() => close(p)} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent">Close</button></td>
                   </tr>))}</tbody>
-              </table></div>
+              </table></div><div className="practice-mobile-positions">{s.open.map((p: any) => (
+                <article className="practice-position" key={p.positionId}>
+                  <div className="practice-position-head"><div><strong>{p.symbol}</strong><p>Opened {when(p.openedAt)} · {money(p.entry.priceCents)}</p></div><span className={tone(p.returnPct)}>{pct(p.returnPct)}</span></div>
+                  <dl><div><dt>Invested</dt><dd>{money(p.amountCents)}</dd></div><div><dt>Value</dt><dd>{money(p.valueCents)}</dd></div><div><dt>vs SPY</dt><dd className={tone(p.vsSpyPct)}>{pct(p.vsSpyPct)}</dd></div><div><dt>Days held</dt><dd>{p.ageDays}</dd></div><div><dt>Your conviction</dt><dd>{p.conviction}</dd></div><div><dt>Evidence score</dt><dd>{p.evidenceScore ?? "—"}</dd></div></dl>
+                  <p className="practice-price-note">{p.exit ? `${money(p.exit.priceCents)} · ${when(p.exit.at)}${p.priceStale ? " · market closed or delayed" : ""}` : "No live price"}</p><button type="button" disabled={busy} onClick={() => close(p)}>Close virtual position</button>
+                </article>))}</div></>
             ) : <p className="text-sm text-muted-foreground">No open practice positions. Open one from a case in the Brief (“Practice-trade this”) or with the form.</p>}
           </div>
 
@@ -176,16 +181,13 @@ export function Practice() {
           )}
         </div>
 
-        <form onSubmit={open} className="space-y-3 rounded-xl border border-border bg-card p-5 lg:col-span-4">
+        <form onSubmit={open} className="practice-form space-y-3 rounded-xl border border-border bg-card p-5 lg:col-span-4">
           <h3 className="font-semibold">Open a practice position</h3>
           {form.caseId && <p className="rounded-md bg-muted px-2 py-1 text-xs">From a Sentinel case; its evidence score is recorded with the trade.</p>}
           <label className="block text-sm">Symbol<input className={input} value={form.symbol} onChange={e => setForm({ ...form, symbol: e.target.value, caseId: null })} placeholder="e.g. MSFT" required /></label>
           <label className="block text-sm">Amount ($)<input className={input} inputMode="decimal" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required /><span className="text-xs text-muted-foreground">Available {money(s?.cashCents)}. Price is the live IEX midpoint, set by the server.</span></label>
           <label className="block text-sm">Your conviction: <span className="font-semibold tabular-nums">{form.conviction}</span>/100<input type="range" min={0} max={100} step={5} value={form.conviction} onChange={e => setForm({ ...form, conviction: Number(e.target.value) })} className="w-full" /><span className="text-xs text-muted-foreground">How sure are you? Recorded now so you can check later whether your confidence was right.</span></label>
-          <label className="block text-sm">Thesis — why should this work?<textarea className={input} rows={2} value={form.thesis} onChange={e => setForm({ ...form, thesis: e.target.value })} required /></label>
-          <label className="block text-sm">Exit plan — when do you take the gain or stop?<input className={input} value={form.exitPlan} onChange={e => setForm({ ...form, exitPlan: e.target.value })} placeholder="e.g. +15% or after Q1 results" required /></label>
-          <label className="block text-sm">What would prove you wrong?<input className={input} value={form.killCondition} onChange={e => setForm({ ...form, killCondition: e.target.value })} placeholder="e.g. guidance cut, revenue falls" required /></label>
-          <button disabled={busy || !s} className="w-full rounded-md bg-[#cbf47b] px-3 py-2 text-sm font-semibold text-black disabled:opacity-50">{busy ? "Recording…" : "Open practice position"}</button>
+          <button disabled={busy || !s} className="practice-submit w-full px-3 py-2 text-sm font-semibold disabled:opacity-50">{busy ? "Recording…" : "Open practice position"}</button>
           <p className="text-xs text-muted-foreground">{s?.notes ?? "Practice only. No real orders."}</p>
         </form>
       </div>

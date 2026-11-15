@@ -44,7 +44,7 @@ export async function GET(){try{const owner=await identity();const {state}=await
 
 const text=(min:number,max:number)=>z.string().trim().min(min).max(max);
 const Input=z.discriminatedUnion('action',[
- z.object({action:z.literal('open'),requestId:z.string().uuid(),expectedSequence:z.number().int().nonnegative().max(5000),symbol:z.string().trim().toUpperCase().regex(SYMBOL),amountCents:z.number().int().positive().max(100_000_000),conviction:z.number().int().min(0).max(100),thesis:text(10,1000),exitPlan:text(2,500),killCondition:text(3,500),caseId:z.string().max(200).nullable().optional()}).strict(),
+ z.object({action:z.literal('open'),requestId:z.string().uuid(),expectedSequence:z.number().int().nonnegative().max(5000),symbol:z.string().trim().toUpperCase().regex(SYMBOL),amountCents:z.number().int().positive().max(100_000_000),conviction:z.number().int().min(0).max(100),thesis:text(0,1000).default(''),exitPlan:text(0,500).default(''),killCondition:text(0,500).default(''),caseId:z.string().max(200).nullable().optional()}).strict(),
  z.object({action:z.literal('close'),requestId:z.string().uuid(),expectedSequence:z.number().int().nonnegative().max(5000),positionId:z.string().min(1).max(100),reason:text(5,500)}).strict(),
  z.object({action:z.literal('review'),requestId:z.string().uuid(),positionId:z.string().min(1).max(100),milestone:z.union([z.literal(7),z.literal(30),z.literal(90)]),decision:z.enum(['keep','close','pass']),note:text(3,500)}).strict(),
 ]);
