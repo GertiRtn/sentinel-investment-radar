@@ -43,9 +43,6 @@ export function validateOpen(input: { amountCents: number; conviction: number; t
   if (!Number.isInteger(input.amountCents) || input.amountCents < 100) return 'Enter an amount of at least $1.';
   if (input.amountCents > cashCents) return 'Not enough practice cash for this amount.';
   if (!Number.isInteger(input.conviction) || input.conviction < 0 || input.conviction > 100) return 'Conviction must be a whole number from 0 to 100.';
-  if (input.thesis.trim().length < 10) return 'Write the thesis in at least a sentence: why should this work?';
-  if (input.exitPlan.trim().length < 2) return 'Say when you would take the gain or end the trade.';
-  if (input.killCondition.trim().length < 3) return 'Say what would prove the thesis wrong.';
   return null;
 }
 

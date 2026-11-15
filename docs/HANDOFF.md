@@ -520,6 +520,17 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 
 **Next:** after publishing, run the check on a few real cases (EMCOR if still present) and read the spans by eye; if the counterparty rule misses often, look at the misses before loosening it. Do not feed `supported` into the screen, score, ranking or the experiment without a new version and the founder's approval.
 
+## 2026-11-14 — Plain-English case brief
+
+The first case screen now explains why a report appeared, gives up to two numbered, sourced comparable growth observations when available, and explains the recorded P/E in everyday terms. It states when comparable positives or price data are unavailable and does not change research decisions, ranking or Practice. News remains a reported claim. The display is deterministic and does not imply that a case is a buy recommendation; check the source and limitations. Existing source details remain in the expandable sections. The case-specific financial explanation is limited by the available recorded data; it is not an AI-generated investment thesis.
+
+## 2026-11-14 — Investment decision preparation
+
+Founder requested eventual buy/no-buy recommendations. Added investment-readiness-v1 as a read-only decision-preparation view, separate from screening and the frozen Practice experiment. It displays recorded sales, annual net income and operating cash flow when available, a historical price/earnings comparison, event-evidence guidance and explicit blockers. It always reports insufficient evidence for a recommendation: the current data and unvalidated rules cannot support a meaningful buy/no-buy conclusion. No changes to historical cases, rankings, rules or orders. A future actionable model requires a separately specified and validated method, point-in-time inputs and versioning; user authorization to pursue buy/no-buy output is recorded here.
+
+## 2026-11-14 — Mobile case overview redesign
+
+The case sheet now has a dark mobile-first overview with Overview, Financials and News tabs, a research-status card, sourced key metrics and an annual/quarterly revenue comparison where two compatible non-negative periods exist. Data remains from the original case-time evidence; no projections, prices or buy recommendations are invented. Existing source, thesis, verification, research team and virtual Practice controls remain in the case. Comparison data that cannot be charted is explicitly unavailable. No screening or experiment logic changed. The managed preview failed to start, so the layout was not visually verified in a browser.
 ## 2026-11-14 — Claude Code (Opus): market comparison around events (founder brief "event-driven factor analysis")
 
 **Baseline:** main 54304eb (#33 merged); 204/204 tests. Branch `market-model`. Not published. The live Site was not checked against GitHub in this session; the founder's briefs mention a mobile case redesign and a decision-preparation view that are not in GitHub `main` or any branch I could see. Neither is in this source, so neither could be preserved or broken here.
@@ -556,29 +567,10 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 
 **Known limits:** the case lookup uses `json_extract(body,'$.symbol')` over the owner's discovery cases (a scan; fine at today's size, revisit with the planned index). Companies are reachable only if they have a case or are followed; there is no global search yet. Industry code is today's SEC code, shown as a number.
 
-## 2026-11-14 (afternoon) — Claude Code (Opus): company page polish after the first live check
+### Workspace visual refresh
+- Extended the company page's dark visual language to the main workspace, navigation and research cards, with mobile-sized controls. Existing screen decisions and data flows are unchanged.
+- The managed local preview timed out during startup in this environment; verify the published screens visually on mobile and desktop.
 
-**Live check (read-only, Chrome, ~12:45 UK):** #35 is published. `/company?symbol=EME` renders with real data (last close $659.47 on 13 Nov, 6M chart with the event marker, SEC key figures with 10-K links, FY2021–25 financials, assessment "Meets research rules", evidence 100/100). EMCOR is the first case shown as meeting all three research rules. `/api/pipeline`: the 11:18 hourly run was complete in 82 s (filings 38 s, news 4 s, discovery <1 s, assessment 38 s, outcomes idle, experiment 2 s). Single-stage runs at 12:22–12:23 (probably Codex's post-publish check). No recurring assessment-only schedule was seen yet.
-**Fixed (branch `company-page-polish`):** the expectations unknown appeared twice on the assessment card (an unknown counterpoint now replaces the fixed line); the P/E note read "IEX midpoint (IEX midpoint)" and now says "Price: …" with the period labelled "EPS for year to"; the financials axis uses $B when values reach a billion. 218/218 tests, build OK. Not rechecked in a browser.
+## 2026-11-14 — Remaining workspace pages visual refresh
 
-## 2026-11-15 — Claude Code (Opus): investment case research prototype (spec v3.2)
-
-**Baseline:** main 33a1905 (#36 merged); 218/218. Branch `investment-case`. Not published. Spec: Project doc `claude/sentinel-investment-case-spec-v3.2-2026-11-15.md` (after three review rounds with ChatGPT and the founder).
-
-**Built:** pure `lib/sentinel/investment-case.ts` (`investment-case-v1`): checks, characteristics, four mechanisms, verdict precedence, observation rules (`observe`, `combine`); runner `investment-case-run.ts` (point in time: `companyFile(..., asOf=case time, 'recorded')`, IEX closes completed before the case, latest filing check); `GET/POST /api/investment-case`; panel on the company page ("Investment case · Research prototype", button "Assess the investment case"). One append-only `investment_case` record per case and version (id from owner, case and version); a repeat returns the stored record. No migration.
-
-**Founder rules applied:** unavailable or unchecked = unknown, never "not a concern"; turnaround requires a supported runway check or positive annual operating cash flow; a mechanism with both a not-applicable and a contradicted condition is *not applicable* (precedence not applicable > contradicted > supported > not established), and every condition is still listed.
-
-**Verified:** 239/239 (+20 synthetic cases in `tests/investment-case.test.mjs`: all 13 from spec section 10, plus the unknown-not-concern rule, the turnaround viability rule, not-applicable vs contradicted, material concerns, held up while the price fell, the listing-notice window, and no advice wording; +1 Miniflare route test: one record, reuse, owner isolation, case unchanged, record immutable, no experiment record). `tsc` clean, build OK.
-
-**Not verified:** real companies (needs the deployed Site and its data); browser rendering.
-
-**Spec conflicts and gaps found against the real code and data (founder decisions):**
-1. *The cover-page share count is not collected* (only us-gaap tags are parsed). "Small company" uses last close × weighted diluted shares, labelled approximate. The share-count flag is always unavailable. Fix: parse `dei:EntityCommonStockSharesOutstanding` in ingest (small change, new metric).
-2. *Single-quarter operating cash flow is mostly unavailable:* `quarterlyFigures` keeps only 75–105-day facts, and 10-Q cash flow is year to date. Cash-burn improvement is therefore almost always unknown. Fix: derive discrete quarters from same-basis year-to-date differences.
-3. *P/E against its own history is not built* (shown as not checked).
-4. *Event verification may be newer than the case.* The record uses the latest check and flags `laterThanAssessment`; the spec doesn't say whether a later check may affect the verdict (it only can via conflicting → insufficient, or the deal mechanism, which never makes a priority).
-5. *Later observations:* rules and baselines are recorded and the evaluation functions are tested, but collecting the next filings and returns by verdict is not built (spec build step 5).
-6. Company type uses today's SIC code (as the spec states).
-
-**Next:** after publishing, run "Assess the investment case" on EME, SIEB, GOAI and ROLR from their company pages and review the output by hand against the filings (illustrative, not tests). Do not use verdicts for notifications or experiments before that review.
+Refined Discover, Following and Practice using the dark company-page visual language. Discover introduces the research feed and keeps provider limitations visible in a disclosure; Following uses clearer company cards and direct company-page links; Practice presents manual positions as cards on small screens while retaining the full desktop table and all virtual-portfolio operations. Older watchlist controls, sample alerts and market news remain available in expandable sections. No data, screening, evidence-score or automated experiment logic was changed. Managed preview startup timed out; mobile and desktop rendering and interaction need visual verification.
