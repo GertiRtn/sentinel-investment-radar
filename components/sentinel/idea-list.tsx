@@ -23,7 +23,7 @@ function Card({ i, onOpen }: { i: any; onOpen: (id: string) => void }) {
     <article className={`radar-idea-card rounded-2xl border bg-card p-5 ${TONE[i.view.tone] ?? "border-border"}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div><span className="text-base font-semibold">{i.symbol}</span>{i.company && <span className="text-sm text-muted-foreground"> · {i.company}</span>}
-          <div className="mt-0.5 text-xs">{i.identity.confirmed ? <span className="text-sky-300">✓ {i.identity.label}</span> : <span className="text-amber-200">⚠ {i.identity.label}</span>}<span className="text-muted-foreground"> · {i.kind.label}</span></div></div>
+          <div className="mt-0.5 text-xs">{i.identity.confirmed ? <span className="text-sky-300">✓ {i.identity.label}</span> : <span className="text-amber-200">⚠ {i.identity.label}</span>}<span className="text-muted-foreground"> · {i.kind.label}</span>{i.newsDirection && <span className={i.newsDirection.direction==="positive"?"text-sky-300":"text-muted-foreground"} title={i.newsDirection.text}> · {i.newsDirection.label}</span>}</div></div>
         <div className="text-right"><span className={`rounded px-2 py-0.5 text-xs font-semibold ${i.tier === "meets_rules" ? "bg-sky-400/15 text-sky-200" : "bg-muted"}`}>{i.tier === "meets_rules" ? "Meets research rules" : "Close, not selected"}</span>
           <div className="mt-1 text-xs text-muted-foreground" title={i.score.meaning}>Checklist {i.score.score === null ? "not scored" : `${i.score.score}/100`} · not a forecast</div></div>
       </div>

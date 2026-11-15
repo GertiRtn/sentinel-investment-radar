@@ -6,6 +6,7 @@ import { closesOf } from './market-model';
 import { closeInstant } from './case-context';
 import { caseEventMatch } from './event-match';
 import { notChecked, STATE_LABEL } from './event-verify';
+import { caseNewsDirection } from './news-direction';
 
 export const COMPANY_PAGE_VERSION = 'company-page-v1';
 export const RANGES = { '1M': 21, '6M': 126, '1Y': 252 } as const;
@@ -104,7 +105,7 @@ export function buildCompanyPage(input: {
   const events = cases.map(k => {
     const match = caseEventMatch(k), ver = v(k.id);
     return { caseId: k.id, publishedAt: k.event?.publishedAt ?? null, assessedAt: k.createdAt, headline: k.event?.headline ?? null, source: k.event?.source ?? null, url: k.event?.url ?? null,
-      status: statusLabel(k), analystOpinion: analystOnly(k), match: { level: match.level, label: match.label }, verification: { state: ver.state, label: ver.label ?? STATE_LABEL[ver.state as keyof typeof STATE_LABEL] } };
+      status: statusLabel(k), analystOpinion: analystOnly(k), newsDirection: (({ direction, label, text }) => ({ direction, label, text }))(caseNewsDirection(k)), match: { level: match.level, label: match.label }, verification: { state: ver.state, label: ver.label ?? STATE_LABEL[ver.state as keyof typeof STATE_LABEL] } };
   });
   const price = input.bars.error ? { status: 'unavailable' as const, reason: input.bars.error, series: [], ranges: {}, markers: [] }
     : priceBlock(input.bars.stock, input.bars.spy, input.bars.fetchedAt, events.filter(e => e.publishedAt && e.headline).map(e => ({ caseId: e.caseId, publishedAt: e.publishedAt!, headline: e.headline! })));
@@ -115,7 +116,7 @@ export function buildCompanyPage(input: {
     reason: i.summary?.reason?.text ?? null, reasonNote: i.summary?.reasonNote ?? null,
     counter: i.summary?.counter ? { text: i.summary.counter.text, unknown: i.summary.counter.status === 'unknown' } : null,
     unknown: 'Expectations: unknown. Sentinel has no analyst estimates or guidance history.',
-    match: events[0].match, verification: events[0].verification, analystOpinion: events[0].analystOpinion, publishedAt: events[0].publishedAt, assessedAt: latest.createdAt,
+    match: events[0].match, verification: events[0].verification, newsDirection: events[0].newsDirection, analystOpinion: events[0].analystOpinion, publishedAt: events[0].publishedAt, assessedAt: latest.createdAt,
     earlierEvents: cases.length - 1, promoted: i.match?.level !== 'name_conflict',
   } : null;
   return {

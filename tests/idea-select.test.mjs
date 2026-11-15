@@ -6,11 +6,11 @@ const esbuild=require(require.resolve('esbuild',{paths:[require.resolve('wrangle
 const b=await esbuild.build({entryPoints:['lib/sentinel/idea-select.ts'],bundle:true,write:false,platform:'node',format:'esm'});
 const {selectIdeas,ideaBrief,MAX_IDEAS,CLOSEST_MIN_SCORE}=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
 const now='2026-11-13T15:00:00.000Z';
-const c=(id,symbol,over={})=>({id,symbol,createdAt:'2026-11-13T10:00:00.000Z',status:'complete',conclusion:'WAIT',screenVersion:'research-screen-v2',reason:'An eligible price-to-reported-earnings measure is unavailable.',score:70,matchLevel:'named_in_headline',topics:['Earnings or financial results'],priceStatus:'unavailable',securityStatus:'candidate_common',...over});
+const c=(id,symbol,over={})=>({direction:'positive',id,symbol,createdAt:'2026-11-13T10:00:00.000Z',status:'complete',conclusion:'WAIT',screenVersion:'research-screen-v2',reason:'An eligible price-to-reported-earnings measure is unavailable.',score:70,matchLevel:'named_in_headline',topics:['Earnings or financial results'],priceStatus:'unavailable',securityStatus:'candidate_common',...over});
 
 test('rule-meeting cases come first; close cases follow by evidence; one row per company; never more than five',()=>{
  const r=selectIdeas([c('w1','WAA',{score:85}),c('i1','INV',{conclusion:'INVESTIGATE',score:60}),c('m1','MON',{conclusion:'MONITOR',score:90}),c('i2','INV',{conclusion:'INVESTIGATE',score:55,createdAt:'2026-11-13T11:00:00.000Z'}),c('w2','WAA',{score:70,createdAt:'2026-11-13T12:00:00.000Z'}),...Array.from({length:6},(_,i)=>c('x'+i,'X'+i,{score:60+i}))],now);
- assert.equal(r.version,'idea-select-v1');assert.deepEqual(r.picked.map(p=>[p.symbol,p.tier]),[['INV','meets_rules'],['MON','closest'],['WAA','closest'],['X5','closest'],['X4','closest']]);assert.equal(r.picked.length,MAX_IDEAS);
+ assert.equal(r.version,'idea-select-v2');assert.deepEqual(r.picked.map(p=>[p.symbol,p.tier]),[['INV','meets_rules'],['MON','closest'],['WAA','closest'],['X5','closest'],['X4','closest']]);assert.equal(r.picked.length,MAX_IDEAS);
  assert.equal(r.picked[0].caseId,'i1','the better-evidenced case represents the company');assert.match(r.headline,/1 company meets all three research rules/);
  assert.deepEqual(selectIdeas([c('a','AAA'),c('b','BBB')],now),selectIdeas([c('b','BBB'),c('a','AAA')],now),'input order does not matter');
 });
