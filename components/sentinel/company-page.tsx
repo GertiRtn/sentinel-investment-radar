@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowUpRight, Check, Clock3, ExternalLink, FlaskConical, Hel
 import { CartesianGrid, ComposedChart, Line, LineChart, Bar, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { WhatChanged } from "./what-changed";
 import { ResearchTeamPanel } from "./research-team-panel";
+import { InvestmentCasePanel } from "./investment-case";
 
 /* Company page (company-page-v1). Real data only: every value comes from /api/company-page with its period and
    source; missing values show "Unknown" with a reason. Green/red only for price direction, always with ▲/▼. */
@@ -193,6 +194,7 @@ export function CompanyPageView({ symbol }: { symbol: string }) {
         <div className="min-w-0 space-y-6"><PriceCard p={p} symbol={symbol} /><KeyFigures rows={d.keyFigures} /><Financials f={d.financials} /></div>
         <aside className="min-w-0 space-y-6">
           <Assessment a={d.assessment} note={d.assessmentNote} dv={d.directionalView} onOpen={setOpen} />
+          {d.assessment?.caseId && <InvestmentCasePanel caseId={d.assessment.caseId} />}
           <Events events={d.events} onOpen={setOpen} />
           <section aria-label="Your positions" className="px-1">
             <h2 className="mb-3 text-sm font-semibold">Your virtual positions</h2>
