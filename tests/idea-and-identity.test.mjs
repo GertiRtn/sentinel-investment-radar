@@ -91,7 +91,7 @@ test('discover-rank-v2: a probable mismatch is listed last with the reason; othe
  const now='2026-11-13T12:00:00.000Z',sc=(n)=>({version:'evidence-score-v1',status:'scored',score:n,band:'x',coverage:100,checks:[]});
  const row=(symbol,score,headline,name)=>({id:'case-'+symbol,symbol,createdAt:'2026-11-13T10:00:00.000Z',conclusion:'WAIT',decision:{version:'research-screen-v2'},evidenceScore:sc(score),event:{headline,publishedAt:'2026-11-13T09:00:00.000Z'},identity:{name}});
  const r=rankCases([row('AMS',90,'ams-OSRAM Reports Q3 2026 Financial Results',ASHS),row('BBB',50,'Beta Corp reports results','Beta Corp'),row('CCC',70,'Shares of CCC fall','Gamma Corp')],now);
- assert.equal(r.version,'discover-rank-v2');assert.deepEqual(r.rows.map(x=>x.symbol),['CCC','BBB','AMS']);
+ assert.equal(r.version,'discover-rank-v3');assert.deepEqual(r.rows.map(x=>x.symbol),['CCC','BBB','AMS']);
  assert.match(r.rows[2].whyRanked,/^Listed last: /);assert.equal(r.rows[2].eventMatch.level,'name_conflict');assert.equal(r.rows[0].eventMatch.level,'ticker_only');assert.equal(r.rows[1].eventMatch.confirmed,true);
 });
 

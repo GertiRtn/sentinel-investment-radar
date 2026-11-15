@@ -9,6 +9,7 @@
  */
 
 import { caseEvidenceScore } from './evidence-score';
+import { caseNewsDirection, showableAsIdea } from './news-direction';
 
 export const BRIEF_VERSION = 'morning-brief-v2';
 export const BRIEF_WINDOW_HOURS = 24;
@@ -95,10 +96,11 @@ export function buildMorningBrief(input: BriefInput) {
   const nowMs = Date.parse(input.now), since = new Date(nowMs - BRIEF_WINDOW_HOURS * 3600000).toISOString();
   const recent = latestPerSymbol(input.cases.filter(c => String(c.createdAt) >= since));
   const v2 = (c: BriefCase) => c?.decision?.version === 'research-screen-v2';
-  const investigate = recent.filter(c => v2(c) && c.conclusion === 'INVESTIGATE').sort(byScore);
-  const monitor = recent.filter(c => v2(c) && c.conclusion === 'MONITOR')
+  const dir = (c: BriefCase) => caseNewsDirection(c).direction, shown = recent.filter(c => showableAsIdea({ direction: dir(c) })), badNews = recent.length - shown.length;
+  const investigate = shown.filter(c => v2(c) && c.conclusion === 'INVESTIGATE' && dir(c) === 'positive').sort(byScore);
+  const monitor = shown.filter(c => v2(c) && (c.conclusion === 'MONITOR' || (c.conclusion === 'INVESTIGATE' && dir(c) !== 'positive')))
     .sort((a, b) => byScore(a, b) || (a.rules ?? []).filter((r: any) => !r.passed).length - (b.rules ?? []).filter((r: any) => !r.passed).length);
-  const waiting = recent.filter(c => !(v2(c) && (c.conclusion === 'INVESTIGATE' || c.conclusion === 'MONITOR')));
+  const waiting = shown.filter(c => !(v2(c) && (c.conclusion === 'INVESTIGATE' || c.conclusion === 'MONITOR')));
 
   const watchChanges = input.watch.filter(w => w.filings.length || w.headlines.length);
   const scanAgeH = input.lastScan ? (nowMs - Date.parse(input.lastScan.at)) / 3600000 : null;
@@ -111,6 +113,7 @@ export function buildMorningBrief(input: BriefInput) {
   else if (investigate.length > 1) s.push(`${investigate.length} cases are worth a closer look, led by ${investigate[0].symbol}${scoreText(investigate[0])} — ${investigate[0].event?.headline ?? ''}.`);
   else if (recent.length) s.push('No case met all three screening rules in the last 24 hours.');
   else s.push('Sentinel assessed no new cases in the last 24 hours.');
+  if (badNews) s.push(`${plural(badNews, 'report with bad or mixed news was', 'reports with bad or mixed news were')} recorded but not shown as ideas.`);
   if (monitor.length) s.push(`${plural(monitor.length, 'more case has', 'more cases have')} complete data but missed a rule.`);
   s.push(watchChanges.length ? `On your watchlist, ${watchChanges.map(w => w.name).join(', ')} ${watchChanges.length === 1 ? 'has' : 'have'} news or filings.` : 'Nothing new on your watchlist.');
   if (runStale) s.push(input.lastScan ? `No market scan has run for ${Math.floor(scanAgeH!)} hours — check the scheduled task.` : 'No market scan has been recorded yet.');
@@ -121,7 +124,7 @@ export function buildMorningBrief(input: BriefInput) {
   return {
     version: BRIEF_VERSION, preparedAt: input.now, windowHours: BRIEF_WINDOW_HOURS,
     bottomLine: s.join(' '),
-    counts: { investigate: investigate.length, monitor: monitor.length, waiting: waiting.length, assessed: recent.length },
+    counts: { investigate: investigate.length, monitor: monitor.length, waiting: waiting.length, badNews, assessed: recent.length },
     takes: investigate.slice(0, MAX_TAKES).map(takeOf),
     moreTakes: Math.max(0, investigate.length - MAX_TAKES),
     radar: monitor.slice(0, MAX_RADAR).map(c => ({ ...takeOf(c), reason: radarReason(c) })),

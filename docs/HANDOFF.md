@@ -624,3 +624,23 @@ It did not have #36 (company page polish) or #37 (investment case).
 - The case overview colours revenue change green/red (direction of a reported figure, not a check).
 
 **Next:** merge, then Codex publishes `main` as a normal commit on the Site's branch (the Site tree must then equal `main`). After that, run the investment case on EME, SIEB, GOAI and ROLR and review.
+
+## 2026-11-15 (late) — Claude Code (Opus): good news vs bad news (founder decision)
+
+**Founder:** news-driven ideas must come from promising news (deals, mergers, contract wins, beats, approvals), never from scandals or bad news; bad news is treated as harmful to the future.
+
+**Built (`news-direction-v1`, pure, `lib/sentinel/news-direction.ts`):** good / bad / mixed / neutral from fixed word lists over the headline (the provider summary only when the headline is silent), with the matched words. Scandal and solvency always make it bad. A cancelled or withdrawn deal drops the deal words, so "terminates merger" is bad news, not mixed. Stored on new cases (`newsDirection`); older cases are computed from their stored text.
+
+**Applied:**
+- `idea-select-v2`: only good news meets the rules; neutral wording can at most be "closest", with "news not clearly positive" stated; bad and mixed are never shown, only counted (`counts.badNews`).
+- `discover-rank-v3`: bad or mixed news is listed after the rest, wrong companies still last, and every row shows its label.
+- Morning brief: only good-news cases are "worth a closer look"; neutral rule-meeting cases count with the watch list; bad or mixed news gets one sentence ("… recorded but not shown as ideas").
+- Company page: a label on each event and on the assessment card.
+
+**Not changed (deliberately):** research screen v2, the evidence score, the investment-case prototype (v1), and the running experiment (`auto-practice-v1` still opens eligible INVESTIGATE cases whatever the news direction; excluding bad news needs a new experiment).
+
+**Tests:** 248/248 (+6 in `tests/news-direction.test.mjs`). Existing tests updated deliberately: fixtures that represented rule-meeting ideas had neutral headlines ("reports results", "news"), and now use good-news wording ("wins contract", "record quarterly results"); version strings bumped; `counts.badNews` added to two assertions. One real gap was found by an old fixture and fixed in the word list: "beats guidance".
+
+**Expected on the live data:** EME ("To Acquire …") is good news and stays a rule-meeting idea. SIEB, GOAI and ROLR ("Reports Third Quarter … Results") are neutral unless their provider summaries say otherwise, so they can at most be "closest".
+
+**Limits:** word lists misread some headlines ("shares fall despite earnings beat" reads as mixed). The label describes the wording, not the future. Review the labels on the live Site and refine the lists as a new version.
