@@ -560,3 +560,25 @@ Started only after the "What changed?" PR (#27) was complete, tested and opened.
 
 **Live check (read-only, Chrome, ~12:45 UK):** #35 is published. `/company?symbol=EME` renders with real data (last close $659.47 on 13 Nov, 6M chart with the event marker, SEC key figures with 10-K links, FY2021–25 financials, assessment "Meets research rules", evidence 100/100). EMCOR is the first case shown as meeting all three research rules. `/api/pipeline`: the 11:18 hourly run was complete in 82 s (filings 38 s, news 4 s, discovery <1 s, assessment 38 s, outcomes idle, experiment 2 s). Single-stage runs at 12:22–12:23 (probably Codex's post-publish check). No recurring assessment-only schedule was seen yet.
 **Fixed (branch `company-page-polish`):** the expectations unknown appeared twice on the assessment card (an unknown counterpoint now replaces the fixed line); the P/E note read "IEX midpoint (IEX midpoint)" and now says "Price: …" with the period labelled "EPS for year to"; the financials axis uses $B when values reach a billion. 218/218 tests, build OK. Not rechecked in a browser.
+
+## 2026-11-15 — Claude Code (Opus): investment case research prototype (spec v3.2)
+
+**Baseline:** main 33a1905 (#36 merged); 218/218. Branch `investment-case`. Not published. Spec: Project doc `claude/sentinel-investment-case-spec-v3.2-2026-11-15.md` (after three review rounds with ChatGPT and the founder).
+
+**Built:** pure `lib/sentinel/investment-case.ts` (`investment-case-v1`): checks, characteristics, four mechanisms, verdict precedence, observation rules (`observe`, `combine`); runner `investment-case-run.ts` (point in time: `companyFile(..., asOf=case time, 'recorded')`, IEX closes completed before the case, latest filing check); `GET/POST /api/investment-case`; panel on the company page ("Investment case · Research prototype", button "Assess the investment case"). One append-only `investment_case` record per case and version (id from owner, case and version); a repeat returns the stored record. No migration.
+
+**Founder rules applied:** unavailable or unchecked = unknown, never "not a concern"; turnaround requires a supported runway check or positive annual operating cash flow; a mechanism with both a not-applicable and a contradicted condition is *not applicable* (precedence not applicable > contradicted > supported > not established), and every condition is still listed.
+
+**Verified:** 239/239 (+20 synthetic cases in `tests/investment-case.test.mjs`: all 13 from spec section 10, plus the unknown-not-concern rule, the turnaround viability rule, not-applicable vs contradicted, material concerns, held up while the price fell, the listing-notice window, and no advice wording; +1 Miniflare route test: one record, reuse, owner isolation, case unchanged, record immutable, no experiment record). `tsc` clean, build OK.
+
+**Not verified:** real companies (needs the deployed Site and its data); browser rendering.
+
+**Spec conflicts and gaps found against the real code and data (founder decisions):**
+1. *The cover-page share count is not collected* (only us-gaap tags are parsed). "Small company" uses last close × weighted diluted shares, labelled approximate. The share-count flag is always unavailable. Fix: parse `dei:EntityCommonStockSharesOutstanding` in ingest (small change, new metric).
+2. *Single-quarter operating cash flow is mostly unavailable:* `quarterlyFigures` keeps only 75–105-day facts, and 10-Q cash flow is year to date. Cash-burn improvement is therefore almost always unknown. Fix: derive discrete quarters from same-basis year-to-date differences.
+3. *P/E against its own history is not built* (shown as not checked).
+4. *Event verification may be newer than the case.* The record uses the latest check and flags `laterThanAssessment`; the spec doesn't say whether a later check may affect the verdict (it only can via conflicting → insufficient, or the deal mechanism, which never makes a priority).
+5. *Later observations:* rules and baselines are recorded and the evaluation functions are tested, but collecting the next filings and returns by verdict is not built (spec build step 5).
+6. Company type uses today's SIC code (as the spec states).
+
+**Next:** after publishing, run "Assess the investment case" on EME, SIEB, GOAI and ROLR from their company pages and review the output by hand against the filings (illustrative, not tests). Do not use verdicts for notifications or experiments before that review.
