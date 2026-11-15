@@ -624,3 +624,24 @@ It did not have #36 (company page polish) or #37 (investment case).
 - The case overview colours revenue change green/red (direction of a reported figure, not a check).
 
 **Next:** merge, then Codex publishes `main` as a normal commit on the Site's branch (the Site tree must then equal `main`). After that, run the investment case on EME, SIEB, GOAI and ROLR and review.
+
+## 2026-11-15 (night) — Claude Code (Opus): first real run of the investment case (live Site, read-only review)
+
+**Deployment:** #38 published; the Site now equals GitHub `main` (Codex). `/api/investment-case` live. Ran "assess" once each on the latest case of EME, SIEB, GOAI and ROLR (four `investment_case` records appended; nothing else written). No verdict was decided in advance; each was then checked by hand against the stored figures.
+
+| | Type | Verdict | Why (from the record) | Hand review |
+|---|---|---|---|---|
+| EME | non-financial | Research priority | Growth with valuation context 4/4: annual and latest-quarter revenue growth ≥ 10% (quarter +28.8%), cash-backed profit (OCF $1.30B vs NI $1.27B), P/E meaningful; named in its own event | Consistent with the filings shown on the company page. Debt *unavailable* (no matching tag), filing check *not checked*; neither is a supporting condition. 6-month fall (−28%) below the steep-fall threshold |
+| SIEB | financial (broker) | Watch: thesis unproven | Financial company: no mechanisms yet | As designed: OCF, debt, margin and runway not applicable. Shows the coverage gap for financials |
+| GOAI | non-financial | Watch: thesis unproven | One concern: profit not backed by cash (NI $8.1M, OCF −$0.4M) | Revenue trend counted as supported: latest quarter −24% is just inside the −25% threshold, and there is no two-year annual decline. Runway unavailable (cash untagged). A threshold-sensitivity example |
+| ROLR | non-financial | Material concerns: thesis not established | Profit not backed by cash (NI $3.2M, OCF −$3.2M); revenue fell two years running and −50.7% in the quarter; cash covers 0.6 years of burn | Consistent |
+
+Every record shows "price opportunity: not established".
+
+**Issues seen in real data:**
+1. Debt is *unavailable* for EME and ROLR. The debt tags are narrow (LongTermDebtNoncurrent/Current, DebtLongtermAndShorttermCombinedAmount). Many filers use other tags (e.g. LongTermDebt), or have none, and "no debt" can't be told apart from "untagged". Candidate fix: more tags, versioned.
+2. GOAI shows how the −25% quarterly threshold decides a case at the margin. Provisional thresholds, as agreed.
+3. Financial companies (SIEB) get no mechanisms.
+4. Still open from the PR: cover-page share count, single-quarter cash flow, P/E history, later observations.
+
+**Use:** still a research prototype. Not used for notifications, rankings or experiments until the founder decides after reviewing this output.
