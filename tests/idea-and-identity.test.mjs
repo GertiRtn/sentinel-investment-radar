@@ -94,3 +94,11 @@ test('discover-rank-v2: a probable mismatch is listed last with the reason; othe
  assert.equal(r.version,'discover-rank-v2');assert.deepEqual(r.rows.map(x=>x.symbol),['CCC','BBB','AMS']);
  assert.match(r.rows[2].whyRanked,/^Listed last: /);assert.equal(r.rows[2].eventMatch.level,'name_conflict');assert.equal(r.rows[0].eventMatch.level,'ticker_only');assert.equal(r.rows[1].eventMatch.confirmed,true);
 });
+
+test('plain brief uses comparable facts and keeps unknown or wrong-company cases uncertain', async()=>{
+ const {plainBrief}=await load('lib/sentinel/plain-brief.ts');
+ const k=mk(); const brief=plainBrief(k,{business:[{label:'Revenue (quarter)',changePct:12.3,comparison:'same quarter a year earlier',latest:{period:{end:'2026-09-30'}}},{label:'Net income (year)',changePct:-8,comparison:'prior year',latest:{period:{end:'2025-12-31'}}}]},{level:'named_in_headline'});
+ assert.equal(brief.positives.length,1); assert.match(brief.positives[0].text,/12.3%/); assert.match(brief.price,/not proof/);
+ const unknown=plainBrief({...k,price:{status:'unavailable'}},{business:[]},{level:'ticker_only'}); assert.equal(unknown.positives.length,0); assert.match(unknown.price,/does not have/);
+ const mismatch=plainBrief(k,{business:[{label:'Revenue (year)',changePct:12}]},{level:'name_conflict'}); assert.equal(mismatch.positives.length,0); assert.match(mismatch.why,/different company/);
+});

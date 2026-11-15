@@ -55,11 +55,10 @@ test('prices come only from sane recorded quotes',()=>{
  assert.match(P.priceFromQuote({bid:99,ask:100,sourceTime:NOW},NOW),/No usable/);
 });
 
-test('opening requires a thesis, exit plan, kill condition and conviction 0–100 the user sets',()=>{
+test('opening permits empty notes and validates cash and conviction',()=>{
  const ok={amountCents:100000,conviction:70,thesis:'Margins expand after the merger.',exitPlan:'+15%',killCondition:'Guidance cut'};
  assert.equal(P.validateOpen(ok,1000000),null);
  assert.match(P.validateOpen({...ok,amountCents:2000000},1000000),/Not enough/);
  assert.match(P.validateOpen({...ok,conviction:101},1000000),/0 to 100/);
- assert.match(P.validateOpen({...ok,thesis:'up'},1000000),/thesis/);
- assert.match(P.validateOpen({...ok,killCondition:''},1000000),/wrong/);
+ assert.equal(P.validateOpen({...ok,thesis:'',exitPlan:'',killCondition:''},1000000),null);
 });

@@ -18,15 +18,15 @@ export function FollowingMonitor() {
   if (error) return <div className="feed-warning" role="alert">{error}</div>;
   if (!d) return <p className="feed-footnote">Loading followed companies…</p>;
   return (
-    <section className="mb-8 space-y-4">
+    <section className="following-page mb-8 space-y-4">
       <div>
-        <h2 className="text-xl font-semibold">Following</h2>
+        <p className="section-kicker">YOUR WATCHLIST</p><h2 className="page-heading">Following</h2>
         <p className="mt-1 text-[15px]">{d.summary}</p>
-        <p className="text-xs text-muted-foreground">Status comes only from your own kill criteria: Broken = a criterion tripped · Weakening = a condition is already met but not yet for long enough · Holding = every criterion evaluated and passing · Can’t check = something could not be evaluated (never counted as holding).</p>
+        <details className="status-explainer"><summary>What do these statuses mean?</summary><p>Status comes only from your own kill criteria: Broken = a criterion tripped · Weakening = a condition is already met but not yet for long enough · Holding = every criterion evaluated and passing · Can’t check = something could not be evaluated (never counted as holding).</p></details>
       </div>
       {d.rows.length ? (
         <ul className="space-y-3">{d.rows.map((r: any) => (
-          <li key={r.entityId} className={`rounded-xl border border-border bg-card p-4 ${r.changed || r.status === "Broken" || r.status === "Weakening" ? "" : "opacity-80"}`}>
+          <li key={r.entityId} className="following-card">
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${STATUS_STYLE[r.status]}`}>{r.status}</span>
               <span className="font-semibold">{r.name}</span>{r.ticker && <span className="text-sm text-muted-foreground">{r.ticker}</span>}
@@ -34,10 +34,11 @@ export function FollowingMonitor() {
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{r.why}</p>
             {r.thesis && <p className="mt-1 text-sm"><span className="font-medium">Your thesis: </span><span className="text-muted-foreground">{r.thesis.text.length > 220 ? r.thesis.text.slice(0, 220) + "…" : r.thesis.text}</span></p>}
+            {r.ticker && <a className="following-company-link" href={`/company?symbol=${encodeURIComponent(r.ticker)}`}>View company <span aria-hidden="true">→</span></a>}
             {r.changed && <ul className="mt-2 space-y-1 border-t border-border pt-2 text-sm">{r.changes.map((c: any, i: number) => (
               <li key={i}><span className="mr-2 rounded bg-muted px-1.5 py-0.5 text-[11px]">{KIND[c.kind] ?? c.kind}</span>{c.url ? <a className="hover:underline" href={c.url} target="_blank" rel="noreferrer">{c.text}</a> : c.text}{c.at && <span className="text-xs text-muted-foreground"> · {String(c.at).slice(0, 10)}</span>}</li>))}</ul>}
           </li>))}</ul>
-      ) : <p className="text-sm text-muted-foreground">You are not following any company yet. Add one in Company files.</p>}
+      ) : <div className="page-empty"><strong>Your watchlist is empty</strong><p>Follow a company to see its updates and your research in one place. Add a company in Company files.</p></div>}
     </section>
   );
 }
