@@ -32,7 +32,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
-## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 248/248 on 2026-11-15)
+## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 260/260 on 2026-11-15 with auto-practice-v2)
 
 - Server-side persistence on Cloudflare D1, raw captures in D1/R2 with SHA-256 dedup.
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
@@ -102,6 +102,20 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - It proves nothing until enough trades close (`MIN_CLOSED_FOR_RECORD` = 20) and it is compared with the outcomes of all assessed cases.
 
 ---
+
+## auto-practice-v2 (virtual only — added 2026-11-15, not started)
+
+Spec: `docs/specs/auto-practice-v2-spec-2026-11-15.md` (rev 2, founder-agreed; build exactly as written). `lib/sentinel/auto-practice-v2.ts` (pure, `auto-practice-v2`), `lib/sentinel/auto-practice-v2-run.ts`, `app/api/auto-practice-v2/route.ts`, `components/sentinel/auto-practice-v2.tsx` (Practice tab, under v1). Pipeline stage `experiment_v2` (after `experiment`).
+
+- **Runs alongside v1 and never reads or writes v1 records.** Off until the owner starts it. Prospective: only cases assessed after the start.
+- Entry (all at assessment time): screen v2 INVESTIGATE · news direction `positive` · `security-identity-v2` `candidate_common` · `named_in_headline` · latest completed IEX daily close ≥ $5 (`closeFromBars`, so a close older than 5 days is "no price") · no open signal for the company and no exit in the previous 20 sessions (SPY calendar). Unknown never passes: it waits or is logged as not entered.
+- **Signal ledger (judged):** entry = adjusted close of the first session starting at or after the case was recorded; exit = 20 SPY sessions later; a missing stock close is `no_price`, never substituted. After cost = (1−15 bp)·(1+gross)·(1−15 bp)−1; excess = after cost − SPY gross on the same dates.
+- **Virtual portfolio (realism check only):** $1,000 × 5, live IEX quote fills as v1; a waiting signal holds a slot; "not taken: slots full"; no fill by the close of the first full session after the case = not taken (no price); exit on the 20th session after entry, never earlier.
+- **Shadow fields:** score band, price basis, event type, SIC (today's) on every signal; investment-case verdict from `pointInTimeVerdict` (only records held at assessment time, including event checks; writes no `investment_case` record), or `not_reconstructable`. Never read by any rule.
+- **Comparison (section 6):** every research-rules case assessed during the experiment is priced the same way (`auto_practice_v2_comparison`); main group = not good news.
+- **Judging (section 7, fixed):** quality check from 20 closed signals; test on exactly the first 50 by exit date (seeded 10,000-sample bootstrap, 90%), and if inconclusive on the first 100. Never buy/sell wording.
+- **Past-case count:** `GET /api/auto-practice-v2?view=count` (read-only apart from the price archive).
+- Changing any rule in sections 2–4 or 7 is auto-practice-v3.
 
 ## Shadow reader (evaluation only — added 2026-11-12)
 

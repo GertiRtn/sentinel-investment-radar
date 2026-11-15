@@ -6,6 +6,7 @@ import { newId } from "@/lib/sentinel/client-id";
 import { PaperPortfolio } from "./paper-portfolio";
 import { PracticeRisk } from "./practice-risk";
 import { AutoPractice } from "./auto-practice";
+import { AutoPracticeV2 } from "./auto-practice-v2";
 
 /* Practice v2: $10,000 virtual, live IEX prices, every position benchmarked against SPY. */
 
@@ -105,6 +106,7 @@ export function Practice() {
 
       {/* 1. Sentinel's own rule-following portfolio comes first. */}
       <AutoPractice />
+      <AutoPracticeV2 />
 
       {/* 2. The owner's hand-made practice trades: a separate $10,000, separate records. */}
       <div className="border-t border-border pt-6">
