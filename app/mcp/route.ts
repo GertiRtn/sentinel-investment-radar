@@ -7,6 +7,7 @@ import {observeOutcomes} from '@/lib/sentinel/outcome-collector';
 import {assessDiscoveryBatch} from '@/lib/sentinel/discovery-case';
 import {markPractice} from '@/app/api/practice/route';
 import {autoPracticeStep} from '@/lib/sentinel/auto-practice-run';
+import {autoPracticeV2Step} from '@/lib/sentinel/auto-practice-v2-run';
 import {collectDiscovery} from '@/lib/sentinel/discovery-collector';
 import {buildBrief} from '@/lib/sentinel/brief-builder';
 import {parseStages,runStage,skippedRecord,summarise,STAGES,type StageRecord} from '@/lib/sentinel/pipeline';
@@ -51,9 +52,10 @@ export async function POST(request:Request){
  await step('outcomes','outcomeObservation',()=>observeOutcomes(ownerId));
  await step('practice','practiceMark',()=>markPractice(ownerId));
  await step('experiment','autoPractice',()=>autoPracticeStep(ownerId));
+ await step('experiment_v2','autoPracticeV2',()=>autoPracticeV2Step(ownerId));
  const summary=summarise(records),elapsedMs=Date.now()-runStarted;let recorded=true;
  // Append-only record of what this run did, so the stage times and failures can be read afterwards. Failing to store it never fails the run.
  try{await database().prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'pipeline_run',NULL,?)").bind('pipeline-run:'+crypto.randomUUID(),ownerId,startedAt,JSON.stringify({version:'pipeline-v1',startedAt,elapsedMs,requested:parsed.stages,summary,stages:records})).run();}catch{recorded=false;}
  const filings=out.filings;
- return reply({content:[{type:'text',text:JSON.stringify({pipeline:{version:'pipeline-v1',status:summary.status,elapsedMs,failed:summary.failed,partial:summary.partial,skipped:summary.skipped,recorded,stages:records},results:filings?.results,checked:filings?.checked,news:out.news,discovery:out.discovery,discoveryAssessment:out.discoveryAssessment,outcomeObservation:out.outcomeObservation,practiceMark:out.practiceMark,autoPractice:out.autoPractice,note:'SEC responses can be cached for up to 24 hours. News reports may be delayed. A failed stage never stops the others and is never reported as complete; partial means work remains for the next run. Failures retain stored records. This tool does not evaluate trades.'})}],isError:summary.failed.length>0});
+ return reply({content:[{type:'text',text:JSON.stringify({pipeline:{version:'pipeline-v1',status:summary.status,elapsedMs,failed:summary.failed,partial:summary.partial,skipped:summary.skipped,recorded,stages:records},results:filings?.results,checked:filings?.checked,news:out.news,discovery:out.discovery,discoveryAssessment:out.discoveryAssessment,outcomeObservation:out.outcomeObservation,practiceMark:out.practiceMark,autoPractice:out.autoPractice,autoPracticeV2:out.autoPracticeV2,note:'SEC responses can be cached for up to 24 hours. News reports may be delayed. A failed stage never stops the others and is never reported as complete; partial means work remains for the next run. Failures retain stored records. This tool does not evaluate trades.'})}],isError:summary.failed.length>0});
 }

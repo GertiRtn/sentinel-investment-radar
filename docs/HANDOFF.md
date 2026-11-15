@@ -644,3 +644,26 @@ It did not have #36 (company page polish) or #37 (investment case).
 **Expected on the live data:** EME ("To Acquire …") is good news and stays a rule-meeting idea. SIEB, GOAI and ROLR ("Reports Third Quarter … Results") are neutral unless their provider summaries say otherwise, so they can at most be "closest".
 
 **Limits:** word lists misread some headlines ("shares fall despite earnings beat" reads as mixed). The label describes the wording, not the future. Review the labels on the live Site and refine the lists as a new version.
+
+## 2026-11-15 (night, later) — Claude Code (Opus): auto-practice-v2 (PR 1 of 2), not started, not published
+
+**Baseline:** main 251c40a (#40 merged); 248/248. Branch `claude/sentinel-investment-case-dev-b98dgz`. Spec committed unchanged: `docs/specs/auto-practice-v2-spec-2026-11-15.md` (rev 2). #39's conflict with #40 (both appended here) was resolved on its own branch by merging `main`; #39 still awaits the founder's "merge".
+
+**Built:** pure rules `lib/sentinel/auto-practice-v2.ts`; runner `auto-practice-v2-run.ts`; `GET/POST /api/auto-practice-v2` (+ `?view=count`); panel under v1 in Practice; pipeline stage `experiment_v2`. `investment-case-run.ts` refactored so `assessCase` is unchanged and a new `pointInTimeVerdict` shares its inputs. Details in AGENTS.md. No migration (new `kind`s only). v1 untouched.
+
+**Reused as the spec asks, no conflict found:** the ordinary-share test (`security-identity-v2` + `candidate_common`) and the named-in-headline test (`event-match-v1` stored level, else computed from the stored text) are read exactly as v1's runner reads them.
+
+**Where the spec was silent, the choice made (founder to confirm; each is a code constant or one line, and changing it before the start is not a rule change):**
+1. Rule 6 applies to the signal ledger (section 2 defines signals), timed on the SPY session calendar, so it does not depend on the prior signal's own prices.
+2. "Latest IEX close" = the last completed IEX daily close by the assessment time, at most 5 days old (`closeFromBars`, price-basis-v2); older is "no price". If the price source can't be read, the case waits until its first full session has closed, then is "no price".
+3. Excess return vs SPY after costs = stock after 15 bp each side minus **SPY gross** (v1's portfolio makes SPY pay the same costs; section 5 lists one SPY return). This is the more demanding reading.
+4. Portfolio "within 1 trading day" = until the close of the first full session after the case; a signal waiting for a fill holds a slot; starting cash $10,000 as v1.
+5. "Not reconstructable" = no SEC company, or the SEC records held at assessment time cannot be read. A prototype verdict of "insufficient evidence" is a computed verdict and is stored as such.
+6. **Point-in-time gap in the prototype:** `assessCase` uses the latest event check, which can be later than the assessment. The shadow verdict uses only checks recorded by the assessment time and writes no `investment_case` record. The prototype itself is unchanged.
+7. Secondary figure "every assessed case" uses the outcome table at 20 intervals (gross, entry at the first close after the case's UTC date), labelled; v1 positions are 30 calendar days with SPY paying costs, labelled. The main comparison group is priced exactly like the signals.
+
+**Verified:** 260/260 (+11 pure in `tests/auto-practice-v2.test.mjs`; +1 Miniflare end-to-end in `tests/work-order03.test.mjs`: count view, prospective signal, not-entered reasons, priced result checked by hand, portfolio not-taken, comparison groups, shadow `not_reconstructable`, idempotent re-run, owner isolation, append-only, no v1 rows, hourly stage, stop). Two existing assertions changed deliberately: the pipeline now has 8 stages. `tsc` clean, build OK. ESLint reports `no-explicit-any` in the new files, as in the existing ones.
+
+**Not verified:** anything against real data. **The past-cases count could not be produced from this sandbox** (no access to the Site's database or the Alpaca key). It needs the code on the Site: `GET /api/auto-practice-v2?view=count`, or "Count past cases" in Practice. Publishing does not start v2; nothing is recorded until Start is pressed. The rule-6 ordering guard (a later case for a company waits while an earlier one is undecided) is covered by review, not by a test.
+
+**Next:** founder reviews the seven choices above, Codex publishes (founder's call), founder runs the count, then decides on Start. PR 2 (debt fields, single-quarter cash flow) only after the count has been seen.

@@ -2,7 +2,7 @@
 // It times each stage, maps whatever the stage returned onto one status vocabulary,
 // and never lets one stage's failure stop another. A failure is never reported as complete.
 
-export const STAGES = ['filings', 'news', 'discovery', 'assessment', 'outcomes', 'practice', 'experiment'] as const;
+export const STAGES = ['filings', 'news', 'discovery', 'assessment', 'outcomes', 'practice', 'experiment', 'experiment_v2'] as const;
 export type Stage = (typeof STAGES)[number];
 export type StageStatus = 'complete' | 'partial' | 'idle' | 'failed' | 'skipped';
 export type StageRecord = { stage: Stage; status: StageStatus; elapsedMs: number; message?: string };
