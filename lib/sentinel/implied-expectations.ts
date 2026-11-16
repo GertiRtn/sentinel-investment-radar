@@ -1,0 +1,158 @@
+/**
+ * What the price assumes (`implied-expectations-v1`, 2026-11-16). Pure: no fetching, no storage.
+ *
+ * A reverse discounted-cash-flow reading: given today's market value of the common equity and the last reported
+ * annual cash flow (operating cash flow minus capital expenditure), which constant five-year growth in that cash
+ * flow makes its present value equal the market value, at stated illustrative assumptions? It answers "what does
+ * the price already assume", next to the company's own reported history. It is not a forecast, not a statement
+ * about whether the price is right, and it produces no value for the shares.
+ *
+ * One basis, stated on every result: EQUITY. Market value of common equity (price × cover-page shares) against
+ * CFO − capex, which is after interest paid. Debt is never subtracted from market value and enterprise value is
+ * never used; net debt is shown beside the result as context only.
+ *
+ * Unknown is never a pass: every input that cannot be established makes the result `unavailable` with the exact
+ * reason, and every check that could not run is listed as "not checked".
+ */
+import type { Figure, FinancialFact } from './financial';
+import { cashflowScenarios, DCF_ASSUMPTIONS } from './cashflow-scenarios';
+
+export const IMPLIED_VERSION = 'implied-expectations-v1';
+export const GROWTH_RANGE = Object.freeze({ min: -0.30, max: 0.40 });
+export const SENSITIVITY = Object.freeze({ discount: [0.10, 0.12, 0.14], terminalGrowth: [0.01, 0.02, 0.03] });
+export const MAX_DEBT_TO_OCF = 4;          // the investment-case debt threshold (provisional)
+export const MAX_PRICE_AGE_DAYS = 5;       // as price-basis-v2
+export const SHARE_COUNT_STALE_DAYS = 200; // shown as a caveat, never hidden
+const DAY = 86_400_000;
+
+export type PriceInput = { value: number; at: string; basis: string; source: string; rawEventId: string | null } | null;
+
+/** Present value of `base` growing at `g` for `years`, then at `terminalGrowth` for ever, discounted at `discount`. */
+export function presentValue(base: number, g: number, discount: number, terminalGrowth: number, years: number) {
+  let pv = 0;
+  for (let y = 1; y <= years; y++) pv += base * (1 + g) ** y / (1 + discount) ** y;
+  return pv + base * (1 + g) ** years * (1 + terminalGrowth) / (discount - terminalGrowth) / (1 + discount) ** years;
+}
+
+export type Solved = { status: 'solved'; growth: number } | { status: 'outside_range'; side: 'below' | 'above'; text: string };
+/** Bisection on growth within GROWTH_RANGE. Present value rises with growth, so the answer is unique or outside the range. */
+export function solveGrowth(marketValue: number, base: number, discount: number, terminalGrowth: number, years: number): Solved {
+  const f = (g: number) => presentValue(base, g, discount, terminalGrowth, years) - marketValue;
+  const pctText = (x: number) => `${x > 0 ? '+' : ''}${(x * 100).toFixed(0)}%`;
+  if (f(GROWTH_RANGE.min) > 0) return { status: 'outside_range', side: 'below', text: `Outside range: even ${pctText(GROWTH_RANGE.min)} a year for ${years} years gives more than the market value.` };
+  if (f(GROWTH_RANGE.max) < 0) return { status: 'outside_range', side: 'above', text: `Outside range: even ${pctText(GROWTH_RANGE.max)} a year for ${years} years gives less than the market value.` };
+  let lo: number = GROWTH_RANGE.min, hi: number = GROWTH_RANGE.max;
+  for (let i = 0; i < 80; i++) { const mid = (lo + hi) / 2; if (f(mid) > 0) hi = mid; else lo = mid; }
+  return { status: 'solved', growth: (lo + hi) / 2 };
+}
+
+const fig = (figures: Figure[], metric: string, end: string) => figures.find(f => f.metric === metric && f.period_end === end && f.value !== null) ?? null;
+const ref = (f: FinancialFact) => ({ tag: f.source_tag, accession: f.accession, form: f.form, filed: f.filed, knownFrom: f.known_from, periodEnd: f.period_end, rawEventId: f.raw_event_id });
+
+/** Reported CFO − capex for up to five annual periods, oldest first, with the change on a positive base. History, never a forecast. */
+export function cashFlowHistory(figures: Figure[], asOf: string) {
+  const ends = [...new Set(figures.filter(f => f.metric === 'cfo' && f.confidence === 'reported' && f.value !== null).map(f => f.period_end))].sort().filter(e => e + 'T23:59:59.999Z' <= asOf);
+  const rows = ends.map(end => {
+    const cfo = fig(figures, 'cfo', end), capex = fig(figures, 'capex', end);
+    const a = cfo?.inputs[0], b = capex?.inputs[0];
+    const comparable = !!a && !!b && cfo!.confidence === 'reported' && capex!.confidence === 'reported' && !!a.period_start && a.period_start === b.period_start && capex!.value! >= 0;
+    return { periodEnd: end, value: comparable ? cfo!.value! - capex!.value! : null, accession: a?.accession ?? null, filed: a?.filed ?? null };
+  }).slice(-5);
+  return rows.map((r, i) => {
+    const prev = i > 0 ? rows[i - 1] : null, gap = prev ? (Date.parse(r.periodEnd) - Date.parse(prev.periodEnd)) / DAY : null;
+    const consecutive = gap !== null && gap >= 330 && gap <= 400;
+    return { ...r, changePct: r.value !== null && prev?.value != null && prev.value > 0 && consecutive ? (r.value / prev.value - 1) * 100 : null,
+      changeNote: r.value === null ? 'CFO or capex not reported for a matching period' : !prev ? 'first period shown' : !consecutive ? 'previous year missing' : prev.value == null ? 'previous year unavailable' : prev.value <= 0 ? 'previous year was zero or negative: no percentage' : null };
+  });
+}
+
+export type ImpliedInput = {
+  symbol: string; asOf: string; sic: string | null; figures: Figure[];
+  shareFact: FinancialFact | null;   // latestShareCount(...) or null
+  price: PriceInput;
+};
+
+export function impliedExpectations(i: ImpliedInput) {
+  const { discount, terminalGrowth, years } = DCF_ASSUMPTIONS;
+  const assumptions = { discount, terminalGrowth, years, growthRange: GROWTH_RANGE, label: 'Illustrative assumptions, not estimates for this company.' };
+  const basis = { id: 'equity', text: 'Equity basis: market value of the common shares (price × cover-page share count) compared with operating cash flow minus capital expenditure, which is after interest paid. Debt is not subtracted and enterprise value is not used.' };
+  const missing: string[] = [], caveats: { id: string; state: 'not_checked' | 'note'; text: string }[] = [
+    { id: 'sbc', state: 'note', text: 'Share-based compensation is not deducted from the cash flow.' },
+    { id: 'borrowing', state: 'note', text: 'Net borrowing and repayment are not modelled.' },
+    { id: 'nci', state: 'not_checked', text: 'Noncontrolling interests: not checked.' },
+    { id: 'preferred', state: 'not_checked', text: 'Preferred stock: not checked.' },
+  ];
+  const now = Date.parse(i.asOf);
+
+  // Company type
+  const sicN = i.sic && /^\d{3,4}$/.test(i.sic) ? Number(i.sic) : null;
+  const financial = sicN !== null && sicN >= 6000 && sicN <= 6799;
+  if (financial) missing.push(`Financial company (SIC ${i.sic}): operating cash flow minus capital expenditure does not describe a bank, insurer or broker, so this calculation does not apply.`);
+  if (sicN === null) caveats.push({ id: 'company_type', state: 'not_checked', text: 'Company type: not checked (no SEC industry code stored).' });
+
+  // Share count
+  const sf = i.shareFact;
+  let shares: null | { value: number; coverDate: string; ageDays: number; stale: boolean; source: ReturnType<typeof ref> } = null;
+  if (!sf) missing.push('Official share count: no cover-page count (dei:EntityCommonStockSharesOutstanding) is stored for this company.');
+  else if (sf.metric === 'shares_outstanding_multiclass') missing.push(`Multi-class: per-share unavailable. The filing of ${sf.filed} reports ${sf.value} share counts; they are not summed.`);
+  else {
+    const age = Math.floor((now - Date.parse(sf.period_end + 'T00:00:00Z')) / DAY);
+    shares = { value: sf.value, coverDate: sf.period_end, ageDays: age, stale: age > SHARE_COUNT_STALE_DAYS, source: ref(sf) };
+    if (shares.stale) caveats.push({ id: 'share_count_age', state: 'note', text: `The share count is ${age} days old (cover date ${sf.period_end}); buybacks or new shares since then are not reflected.` });
+  }
+
+  // Price
+  let price: null | (NonNullable<PriceInput> & { ageDays: number }) = null;
+  if (!i.price || !(i.price.value > 0) || !Number.isFinite(Date.parse(i.price.at))) missing.push('Price: no timestamped IEX price is available.');
+  else {
+    const age = (now - Date.parse(i.price.at)) / DAY;
+    if (age < 0 || age > MAX_PRICE_AGE_DAYS) missing.push(`Stale price: the latest price is from ${i.price.at.slice(0, 10)}, more than ${MAX_PRICE_AGE_DAYS} days before this calculation.`);
+    else price = { ...i.price, ageDays: Math.floor(age) };
+  }
+
+  // Base cash flow: the same validity checks as the cash-flow scenarios (period, currency, filing, age, sign).
+  const cf = cashflowScenarios(i.figures, i.asOf);
+  if (cf.status !== 'illustrative') missing.push('Base cash flow: ' + cf.reason);
+
+  // Leverage against the equity basis, and net debt as context only.
+  let leverage: { state: 'ok' | 'too_high' | 'not_checked'; debt: number | null; ocf: number | null; ratio: number | null; text: string } = { state: 'not_checked', debt: null, ocf: null, ratio: null, text: 'Leverage: not checked (no annual cash flow period).' };
+  let netDebt: { value: number; debt: number; cash: number; periodEnd: string } | null = null;
+  if (cf.status === 'illustrative') {
+    const debt = fig(i.figures, 'total_debt', cf.periodEnd), cash = fig(i.figures, 'cash', cf.periodEnd);
+    if (!debt) { leverage = { state: 'not_checked', debt: null, ocf: cf.cfo, ratio: null, text: 'Leverage: not checked. No supported debt tag is reported for this period, so "no debt" cannot be told from "untagged".' }; caveats.push({ id: 'leverage', state: 'not_checked', text: leverage.text }); }
+    else {
+      const ratio = cf.cfo! > 0 ? debt.value! / cf.cfo! : null;
+      const high = ratio === null || ratio > MAX_DEBT_TO_OCF;
+      leverage = { state: high ? 'too_high' : 'ok', debt: debt.value, ocf: cf.cfo, ratio, text: ratio === null ? 'Leverage: debt is reported but operating cash flow is not positive.' : `Debt is ${ratio.toFixed(1)}× operating cash flow (limit for this basis: ${MAX_DEBT_TO_OCF}×, provisional).` };
+      if (high) missing.push(`Leverage too high for the equity basis: ${leverage.text} With this much debt, cash flow after interest says little about what belongs to shareholders.`);
+      if (cash) netDebt = { value: debt.value! - cash.value!, debt: debt.value!, cash: cash.value!, periodEnd: cf.periodEnd };
+    }
+  }
+
+  const history = cashFlowHistory(i.figures, i.asOf);
+  const common = {
+    version: IMPLIED_VERSION, symbol: i.symbol, asOf: i.asOf, basis, assumptions, caveats, leverage,
+    netDebtContext: netDebt ? { ...netDebt, note: 'Context only. Not subtracted from market value and not part of the calculation.' } : { value: null, note: 'Net debt unavailable: debt and cash are not both tagged for this period.' },
+    history: { rows: history, note: 'The company’s own reported history. Not a forecast.' },
+    opportunity: { status: 'not_established' as const, text: 'Whether reality may differ from what the price assumes: not established. Sentinel has no sourced expectations data; compare the implied growth with the reported history yourself.' },
+    limitations: 'A reading of the price under stated illustrative assumptions. Not a forecast, not a statement about what the shares are worth, and not advice.',
+  };
+  if (missing.length || !shares || !price || cf.status !== 'illustrative') return { ...common, status: 'unavailable' as const, missing, inputs: { price, shares, baseCashFlow: cf.status === 'illustrative' ? cf.baseCashFlow : null } };
+
+  const marketValue = price.value * shares.value, base = cf.baseCashFlow;
+  const solved = solveGrowth(marketValue, base, discount, terminalGrowth, years);
+  const cell = (d: number, t: number) => { const s = solveGrowth(marketValue, base, d, t, years); return { discount: d, terminalGrowth: t, growth: s.status === 'solved' ? s.growth : null, outside: s.status === 'outside_range' ? s.side : null }; };
+  return {
+    ...common, status: 'computed' as const, missing: [],
+    marketValue: { value: marketValue, unit: 'USD', method: 'price × cover-page shares outstanding',
+      price: { value: price.value, at: price.at, basis: price.basis, source: price.source, rawEventId: price.rawEventId, ageDays: price.ageDays },
+      shares: { value: shares.value, coverDate: shares.coverDate, ageDays: shares.ageDays, stale: shares.stale, ...shares.source } },
+    baseCashFlow: { value: base, cfo: cf.cfo, capex: cf.capex, unit: 'USD', periodStart: cf.periodStart, periodEnd: cf.periodEnd, filed: cf.filed, accession: cf.accession, rawEventId: cf.rawEventId, method: 'reported operating cash flow minus reported capital expenditure (calculated)' },
+    multiple: marketValue / base,
+    implied: solved.status === 'solved'
+      ? { status: 'solved' as const, growth: solved.growth, growthPct: Math.round(solved.growth * 10000) / 100, repricedValue: presentValue(base, solved.growth, discount, terminalGrowth, years),
+          text: `At a ${(discount * 100).toFixed(0)}% discount rate and ${(terminalGrowth * 100).toFixed(0)}% growth after year ${years}, the price assumes this cash flow ${solved.growth >= 0 ? 'grows' : 'shrinks'} about ${Math.abs(solved.growth * 100).toFixed(1)}% a year for ${years} years.` }
+      : { status: 'outside_range' as const, side: solved.side, text: solved.text },
+    sensitivity: { discount: SENSITIVITY.discount, terminalGrowth: SENSITIVITY.terminalGrowth, cells: SENSITIVITY.discount.flatMap(d => SENSITIVITY.terminalGrowth.map(t => cell(d, t))), note: 'Implied five-year growth under other assumptions. "Outside range" means no growth between −30% and +40% fits.' },
+  };
+}
