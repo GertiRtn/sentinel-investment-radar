@@ -23,7 +23,8 @@ const ymd=(t:number)=>new Date(t).toISOString().slice(0,10);
 
 type Bars={closes:Map<string,number>;rawId:string;fetchedAt:string;last:ReturnType<typeof closeFromBars>};
 /** Archived IEX daily bars (adjusted). Null with a reason when they cannot be read; never a guess. */
-async function dailyBars(symbol:string,now:string,startDays=400):Promise<Bars|{error:string}>{
+async function dailyBars(symbol:string,now:string,wantDays=400):Promise<Bars|{error:string}>{
+ const startDays=Math.max(400,wantDays); // the company page's window, so the 6-hour archive is shared
  const c=creds();if(!c)return {error:'Market data is not connected.'};if(!SYMBOL.test(symbol))return {error:'No usable ticker.'};
  try{const b=await archivedDailyBars(symbol,ymd(Date.parse(now)-startDays*DAY),now.slice(0,10),c);return {closes:closesOf(b.payload,b.fetchedAt<now?b.fetchedAt:now),rawId:b.rawId,fetchedAt:b.fetchedAt,last:closeFromBars(b.payload,symbol,now,b.rawId)};}
  catch(e){return {error:e instanceof Error?e.message:'Daily prices could not be loaded.'};}
