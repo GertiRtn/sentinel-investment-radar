@@ -6,15 +6,12 @@ import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const esbuild=require(require.resolve('esbuild',{paths:[require.resolve('wrangler/package.json')]}));
 const b=await esbuild.build({stdin:{contents:`export * from './lib/sentinel/financial';export * from './lib/sentinel/implied-expectations';`,resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,platform:'node',format:'esm'});
-const {parseFacts,derive,latestShareCount,impliedExpectations}=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
+const {parseFacts,derive,latestShareCount,impliedExpectations,TAG_LIST_V2}=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
 const [factsPath,subPath,symbol,price,priceAt]=process.argv.slice(2);
 const data=JSON.parse(readFileSync(factsPath,'utf8')),sub=JSON.parse(readFileSync(subPath,'utf8')),asOf=process.env.AS_OF||new Date().toISOString();
-// EXTRA_CAPEX_TAG: research only. Reads another us-gaap tag as capital expenditure to see what a wider tag list would give.
-// The app's TAGS list is NOT changed by this; widening it changes existing figures and needs its own versioned change.
-const extra=process.env.EXTRA_CAPEX_TAG;if(extra&&data.facts['us-gaap'][extra]&&!data.facts['us-gaap'].PaymentsToAcquirePropertyPlantAndEquipment)data.facts['us-gaap'].PaymentsToAcquirePropertyPlantAndEquipment=data.facts['us-gaap'][extra];
 const facts=parseFacts(data,'sec:offline','offline-file',asOf);
-const r=impliedExpectations({symbol,asOf,sic:String(sub.sic||'')||null,figures:derive(facts,asOf),shareFact:latestShareCount(facts,asOf),
+const r=impliedExpectations({symbol,asOf,sic:String(sub.sic||'')||null,figures:derive(facts,asOf,undefined,TAG_LIST_V2),shareFact:latestShareCount(facts,asOf),
  price:price?{value:Number(price),at:priceAt,basis:'operator-typed',source:'typed on the command line (not a recorded quote)',rawEventId:null}:null});
 const shareFacts=facts.filter(f=>f.metric.startsWith('shares_outstanding'));
-console.log(JSON.stringify({offlineCapexTag:extra||null,company:sub.name,sic:sub.sic,asOf,shareFacts:{single:shareFacts.filter(f=>f.metric==='shares_outstanding').length,multiClassMarkers:shareFacts.filter(f=>f.metric!=='shares_outstanding').length},
- status:r.status,missing:r.missing,marketValue:r.marketValue,baseCashFlow:r.baseCashFlow,implied:r.implied,sensitivity:r.sensitivity?.cells.map(c=>[c.discount,c.terminalGrowth,c.growth===null?'outside range':+(c.growth*100).toFixed(2)]),leverage:r.leverage,netDebt:r.netDebtContext,history:r.history.rows.map(h=>[h.periodEnd,h.value,h.changePct===null?h.changeNote:+h.changePct.toFixed(1)]),caveats:r.caveats.map(c=>c.text)},null,1));
+console.log(JSON.stringify({tagList:TAG_LIST_V2,company:sub.name,sic:sub.sic,asOf,shareFacts:{single:shareFacts.filter(f=>f.metric==='shares_outstanding').length,multiClassMarkers:shareFacts.filter(f=>f.metric!=='shares_outstanding').length},
+ status:r.status,missing:r.missing,notRun:r.notRun.text,marketValue:r.marketValue,baseCashFlow:r.baseCashFlow,implied:r.implied,sensitivity:r.sensitivity?.cells.map(c=>[c.discount,c.terminalGrowth,c.growth===null?'outside range':+(c.growth*100).toFixed(2)]),leverage:r.leverage,netDebt:r.netDebtContext,history:r.history.rows.map(h=>[h.periodEnd,h.value,h.changePct===null?h.changeNote:+h.changePct.toFixed(1)]),caveats:r.caveats.map(c=>c.text)},null,1));

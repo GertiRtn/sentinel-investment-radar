@@ -17,7 +17,19 @@
 import type { Figure, FinancialFact } from './financial';
 import { cashflowScenarios, DCF_ASSUMPTIONS } from './cashflow-scenarios';
 
-export const IMPLIED_VERSION = 'implied-expectations-v1';
+export const IMPLIED_VERSION = 'implied-expectations-v2'; // v2 (2026-11-16): xbrl-tags-v2 figures, SEC load state, ADR rule, checks-not-run line
+export const ADR_FORMS = ['20-F', '20-F/A', '40-F', '40-F/A'];
+/** How the company's SEC data was read. `parserCurrent`: the last successful read used the current fact parser (share counts and xbrl-tags-v2). */
+export type SecState = { state: 'loaded'; parserCurrent: boolean; tagList: string } | { state: 'not_loaded' } | { state: 'failed'; error: string };
+export const SEC_MESSAGES = {
+  notLoaded: 'SEC data not loaded yet: no successful SEC read is stored for this company.',
+  failed: (e: string) => `SEC read failed: ${e} This is a read error, not missing data; stored records are kept. Try again later.`,
+  shareNotLoaded: 'Share count not loaded yet: this company\u2019s SEC data was stored before Sentinel read cover-page share counts. It loads at the next SEC refresh, or with \u201cLoad share counts\u201d below.',
+  shareNotReported: 'Official share count: the company\u2019s filings report no cover-page count (dei:EntityCommonStockSharesOutstanding).',
+  adr: (form: string) => `Unavailable: ADR ratio not stored. The share count comes from a ${form}, which counts the company\u2019s ordinary shares; how many of them one US-listed share represents is not stored, so the market value cannot be worked out.`,
+  olderTags: ' This company\u2019s SEC data was stored before the wider tag list (xbrl-tags-v2); it may load at the next SEC refresh.',
+};
+const NOT_RUN_LABEL: Record<string, string> = { leverage: 'debt (not tagged)', nci: 'noncontrolling interests', preferred: 'preferred stock', company_type: 'company type (no industry code)' };
 export const GROWTH_RANGE = Object.freeze({ min: -0.30, max: 0.40 });
 export const SENSITIVITY = Object.freeze({ discount: [0.10, 0.12, 0.14], terminalGrowth: [0.01, 0.02, 0.03] });
 export const MAX_DEBT_TO_OCF = 4;          // the investment-case debt threshold (provisional)
@@ -70,6 +82,7 @@ export type ImpliedInput = {
   symbol: string; asOf: string; sic: string | null; figures: Figure[];
   shareFact: FinancialFact | null;   // latestShareCount(...) or null
   price: PriceInput;
+  sec?: SecState;   // absent = loaded with the current parser (pure tests and offline scripts)
 };
 
 export function impliedExpectations(i: ImpliedInput) {
@@ -82,7 +95,10 @@ export function impliedExpectations(i: ImpliedInput) {
     { id: 'nci', state: 'not_checked', text: 'Noncontrolling interests: not checked.' },
     { id: 'preferred', state: 'not_checked', text: 'Preferred stock: not checked.' },
   ];
-  const now = Date.parse(i.asOf);
+  const now = Date.parse(i.asOf), sec: SecState = i.sec ?? { state: 'loaded', parserCurrent: true, tagList: 'xbrl-tags-v2' };
+  if (sec.state === 'not_loaded') missing.push(SEC_MESSAGES.notLoaded);
+  if (sec.state === 'failed') missing.push(SEC_MESSAGES.failed(sec.error));
+  const secOk = sec.state === 'loaded', current = sec.state === 'loaded' && sec.parserCurrent;
 
   // Company type
   const sicN = i.sic && /^\d{3,4}$/.test(i.sic) ? Number(i.sic) : null;
@@ -93,7 +109,9 @@ export function impliedExpectations(i: ImpliedInput) {
   // Share count
   const sf = i.shareFact;
   let shares: null | { value: number; coverDate: string; ageDays: number; stale: boolean; source: ReturnType<typeof ref> } = null;
-  if (!sf) missing.push('Official share count: no cover-page count (dei:EntityCommonStockSharesOutstanding) is stored for this company.');
+  if (!secOk) { /* the SEC reason above covers it */ }
+  else if (!sf) missing.push(current ? SEC_MESSAGES.shareNotReported : SEC_MESSAGES.shareNotLoaded);
+  else if (ADR_FORMS.includes(sf.form)) missing.push(SEC_MESSAGES.adr(sf.form));
   else if (sf.metric === 'shares_outstanding_multiclass') missing.push(`Multi-class: per-share unavailable. The filing of ${sf.filed} reports ${sf.value} share counts; they are not summed.`);
   else {
     const age = Math.floor((now - Date.parse(sf.period_end + 'T00:00:00Z')) / DAY);
@@ -112,7 +130,7 @@ export function impliedExpectations(i: ImpliedInput) {
 
   // Base cash flow: the same validity checks as the cash-flow scenarios (period, currency, filing, age, sign).
   const cf = cashflowScenarios(i.figures, i.asOf);
-  if (cf.status !== 'illustrative') missing.push('Base cash flow: ' + cf.reason);
+  if (secOk && cf.status !== 'illustrative') missing.push('Base cash flow: ' + cf.reason + (current ? '' : SEC_MESSAGES.olderTags));
 
   // Leverage against the equity basis, and net debt as context only.
   let leverage: { state: 'ok' | 'too_high' | 'not_checked'; debt: number | null; ocf: number | null; ratio: number | null; text: string } = { state: 'not_checked', debt: null, ocf: null, ratio: null, text: 'Leverage: not checked (no annual cash flow period).' };
@@ -132,6 +150,8 @@ export function impliedExpectations(i: ImpliedInput) {
   const history = cashFlowHistory(i.figures, i.asOf);
   const common = {
     version: IMPLIED_VERSION, symbol: i.symbol, asOf: i.asOf, basis, assumptions, caveats, leverage,
+    notRun: (() => { const ids = caveats.filter(c => c.state === 'not_checked').map(c => c.id); return { ids, text: ids.length ? `Checks not run: ${ids.map(x => NOT_RUN_LABEL[x] ?? x).join(', ')}.` : null }; })(),
+    sec: sec.state === 'loaded' ? { state: 'loaded', parserCurrent: sec.parserCurrent, tagList: sec.tagList } : sec, canLoadShareCounts: secOk && !current,
     netDebtContext: netDebt ? { ...netDebt, note: 'Context only. Not subtracted from market value and not part of the calculation.' } : { value: null, note: 'Net debt unavailable: debt and cash are not both tagged for this period.' },
     history: { rows: history, note: 'The company’s own reported history. Not a forecast.' },
     opportunity: { status: 'not_established' as const, text: 'Whether reality may differ from what the price assumes: not established. Sentinel has no sourced expectations data; compare the implied growth with the reported history yourself.' },
