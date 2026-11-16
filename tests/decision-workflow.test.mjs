@@ -177,3 +177,33 @@ test('3D: three separate review results; "not yet" and "unavailable" are answers
  assert.equal(snap.evaluateCheckpoint(cp3,savedAt,'2026-05-16T00:00:00.000Z',figs('2026-05-16T00:00:00.000Z').annual,figs('2026-05-16T00:00:00.000Z').quarterly).status,'not_yet');
  assert.equal(snap.isCheckpoint('quarterly_revenue_yoy'),true);assert.equal(snap.isCheckpoint('made up'),false);
 });
+
+// ---- 3F ----------------------------------------------------------------------------------------
+test('3F: funnel counts reconcile on a fixture; rejected reasons are counted separately; a mismatch is displayed, not hidden',async()=>{
+ const {funnelCounts}=await load(`export * from './lib/sentinel/discovery-funnel';`);
+ const now='2026-11-16T12:00:00.000Z',ago=h=>new Date(Date.parse(now)-h*3600000).toISOString();
+ const candidates=[
+  {id:'a',createdAt:ago(2),priority:'topic match',symbols:['AAA','BBB']},   // AAA assessed (meets rules, good); BBB pending
+  {id:'b',createdAt:ago(5),priority:'topic match',symbols:['CCC']},         // cooling down
+  {id:'c',createdAt:ago(100),priority:'topic match',symbols:['DDD','EEE']}, // DDD aged out; EEE assessed (wrong company, bad news)
+  {id:'d',createdAt:ago(3),priority:'unclassified',symbols:['FFF','GGG']},  // not eligible
+  {id:'e',createdAt:ago(30),priority:'topic match',symbols:['HHH']},        // assessed: watch, neutral
+  {id:'f',createdAt:ago(200),priority:'topic match',symbols:['OLD']},       // outside the 7-day window
+  {id:'g',createdAt:ago(4),priority:'unclassified',symbols:[]},             // a report with no symbol
+ ];
+ const cases=[{candidateId:'a',symbol:'AAA',conclusion:'INVESTIGATE',direction:'positive',matchLevel:'named_in_headline'},{candidateId:'c',symbol:'EEE',conclusion:'WAIT',direction:'negative',matchLevel:'name_conflict'},{candidateId:'e',symbol:'HHH',conclusion:'MONITOR',direction:'neutral',matchLevel:'ticker_only'}];
+ const attempts=[{candidateId:'b',symbol:'CCC',createdAt:ago(1)},{candidateId:'a',symbol:'BBB',createdAt:ago(7)}]; // BBB's failure is older than 6 h: pending again
+ const run=h=>funnelCounts({now,windowHours:h,queueWindowHours:96,capacityPerRun:6,candidates,cases,attempts});
+ const w=run(168);
+ assert.deepEqual([w.found.reports,w.found.pairs],[6,8]);assert.deepEqual([w.eligible.reports,w.eligible.pairs],[4,6]);assert.deepEqual([w.notEligible.reports,w.notEligible.pairs],[2,2]);
+ assert.equal(w.assessed.pairs,3);assert.deepEqual(w.assessed.byConclusion,{meetsRules:1,watch:1,notEnoughData:1});assert.deepEqual(w.assessed.byNewsDirection,{good:1,neutral:1,mixed:0,bad:1});
+ assert.deepEqual([w.pending.pairs,w.coolingDown.pairs,w.agedOut.pairs],[1,1,1]);assert.deepEqual({...w.rejected,definition:undefined},{notEligible:2,wrongCompany:1,badOrMixedNews:1,definition:undefined});
+ assert.equal(w.deduplicated.count,null);assert.match(w.deduplicated.text,/^Not recorded/);assert.match(w.capacity.text,/up to 6 pairs per run/);
+ assert.equal(w.reconciliation.ok,true);assert.ok(w.reconciliation.checks.every(c=>c.left===c.right));
+ assert.equal(w.found.pairs,w.eligible.pairs+w.notEligible.pairs);assert.equal(w.eligible.pairs,w.assessed.pairs+w.pending.pairs+w.coolingDown.pairs+w.agedOut.pairs);
+ const d=run(24);assert.deepEqual([d.found.reports,d.eligible.pairs,d.assessed.pairs,d.pending.pairs,d.coolingDown.pairs,d.agedOut.pairs],[4,3,1,1,1,0]);assert.equal(d.reconciliation.ok,true);
+ assert.equal(run(96).reconciliation.ok,true);
+ // An unknown news direction breaks one identity, and the difference is reported.
+ const odd=funnelCounts({now,windowHours:168,queueWindowHours:96,capacityPerRun:6,candidates,cases:[...cases.slice(0,2),{...cases[2],direction:undefined}],attempts});
+ assert.equal(odd.reconciliation.ok,false);const bad=odd.reconciliation.checks.filter(c=>!c.ok);assert.equal(bad.length,1);assert.match(bad[0].name,/good \+ neutral/);assert.equal(bad[0].difference,1,'the discrepancy is reported with its size');
+});
