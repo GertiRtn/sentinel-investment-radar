@@ -89,3 +89,36 @@ export function reviewSnapshot(input: { snapshot: any; now: string; annual: Figu
     alternatives: { question: 'Did it do better than the alternatives after costs?', ...perf.alternatives },
     note: 'Three separate results. A stock can rise while the thesis fails, or fall while the thesis held. Virtual; not advice.' };
 }
+
+/**
+ * What was on screen vs what was saved (2026-11-16). The snapshot is always recalculated on the server when Save is
+ * pressed; the comparison the browser showed is used only to say whether any figure changed in between. It is never
+ * stored and never replaces a saved value. Compared: the budget, the starting portfolio total, and for each option its
+ * status, cash after, entry and exit costs, invested amount, stock weight (to 0.1 point) and the value under each
+ * market scenario.
+ */
+export type SavedCheck = { status: 'matches' | 'differs' | 'not_checked'; text: string; shownPreparedAt: string | null; differences: { option: string; field: string; shown: unknown; saved: unknown }[] };
+const FIELDS: [string, (o: any) => unknown][] = [
+  ['status', o => o?.status ?? null], ['cash after', o => o?.cashAfterCents ?? null], ['cost to enter', o => o?.costs?.entryCents ?? null], ['cost to exit (estimate)', o => o?.costs?.exitCents ?? null],
+  ['invested', o => o?.investedCents ?? null], ['stock weight', o => (typeof o?.stockWeightPct === 'number' ? Math.round(o.stockWeightPct * 10) / 10 : null)],
+];
+export function compareShownToSaved(shown: any, saved: any): SavedCheck {
+  if (!shown || typeof shown !== 'object' || !Array.isArray(shown.options)) return { status: 'not_checked', text: 'No on-screen comparison was sent, so the saved values could not be checked against it.', shownPreparedAt: null, differences: [] };
+  const d: SavedCheck['differences'] = [], push = (option: string, field: string, a: unknown, b: unknown) => { if (JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)) d.push({ option, field, shown: a ?? null, saved: b ?? null }); };
+  push('all', 'budget', shown.budgetCents, saved?.budgetCents);
+  push('all', 'starting portfolio', shown.start?.totalCents, saved?.start?.totalCents);
+  const byId = (c: any) => new Map((Array.isArray(c?.options) ? c.options : []).map((o: any) => [String(o?.id), o]));
+  const a = byId(shown), b = byId(saved);
+  for (const id of new Set([...a.keys(), ...b.keys()]) as Set<string>) {
+    const x: any = a.get(id), y: any = b.get(id), label = String(y?.label ?? x?.label ?? id);
+    for (const [field, get] of FIELDS) push(label, field, get(x), get(y));
+    const moves = new Set([...(x?.scenarios ?? []), ...(y?.scenarios ?? [])].map((s: any) => s?.spyMove));
+    for (const m of moves) {
+      const sx = x?.scenarios?.find((s: any) => s?.spyMove === m), sy = y?.scenarios?.find((s: any) => s?.spyMove === m);
+      push(label, `if SPY moves ${m > 0 ? '+' : ''}${Math.round(m * 100)}%`, sx?.status === 'computed' ? sx.valueCents : sx?.status ?? null, sy?.status === 'computed' ? sy.valueCents : sy?.status ?? null);
+    }
+  }
+  return d.length
+    ? { status: 'differs', text: `${d.length} figure${d.length === 1 ? '' : 's'} changed between the comparison on screen and the moment you pressed save. The saved values are the recalculated ones.`, shownPreparedAt: typeof shown.preparedAt === 'string' ? shown.preparedAt : null, differences: d }
+    : { status: 'matches', text: 'Every figure matches the comparison that was on screen.', shownPreparedAt: typeof shown.preparedAt === 'string' ? shown.preparedAt : null, differences: [] };
+}

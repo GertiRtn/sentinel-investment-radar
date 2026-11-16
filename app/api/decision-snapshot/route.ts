@@ -9,7 +9,8 @@ export const dynamic='force-dynamic';
  * GET ?id=      the stored snapshot unchanged (`raw` is the stored text) plus a review computed now.
  * GET ?symbol=  the owner's snapshots for a ticker, and the checkpoint templates.
  * GET ?view=replay  historical replay over stored cases (read-only apart from the price archive).
- * POST {action:'save',caseId,requestId,budgetCents?,checkpoint}  save once (a retry returns the stored record).
+ * POST {action:'save',caseId,requestId,budgetCents?,checkpoint,shown?}  recalculate and save once (a retry returns the stored
+ *   record); the response carries the saved values, when they were calculated, and how they compare with `shown`.
  * POST {action:'review',id}  append today's review as its own record.
  */
 export async function GET(request:Request){try{
@@ -21,14 +22,14 @@ export async function GET(request:Request){try{
  return json({symbol,snapshots:await listSnapshots(owner,symbol),checkpoints:CHECKPOINTS,defaultBudgetCents:DEFAULT_BUDGET_CENTS});
 }catch(e){return failure(e)}}
 
-const Save=z.object({action:z.literal('save'),caseId:z.string().min(1).max(200),requestId:z.string().uuid(),budgetCents:z.number().int().min(100).max(100_000_000).optional(),checkpoint:z.string()}).strict();
+const Save=z.object({action:z.literal('save'),caseId:z.string().min(1).max(200),requestId:z.string().uuid(),budgetCents:z.number().int().min(100).max(100_000_000).optional(),checkpoint:z.string(),shown:z.unknown().optional()}).strict(); // `shown`: the on-screen comparison, used only to flag differences; never stored
 const Review=z.object({action:z.literal('review'),id:z.string().min(1).max(200)}).strict();
 export async function POST(request:Request){try{
  const owner=await identity(request),input=await body(request);
  const review=Review.safeParse(input);
  if(review.success){const r=await recordReview(owner,review.data.id);if(!r)throw new ApiError(404,'Snapshot not found.');return json(r);}
  const save=Save.safeParse(input);if(!save.success||!isCheckpoint(save.data.checkpoint))throw new ApiError(400,'Invalid request.');
- const r=await saveSnapshot(owner,{caseId:save.data.caseId,requestId:save.data.requestId,budgetCents:save.data.budgetCents??DEFAULT_BUDGET_CENTS,checkpoint:save.data.checkpoint});
+ const r=await saveSnapshot(owner,{caseId:save.data.caseId,requestId:save.data.requestId,budgetCents:save.data.budgetCents??DEFAULT_BUDGET_CENTS,checkpoint:save.data.checkpoint,shown:save.data.shown});
  if(!r)throw new ApiError(404,'Research case not found.');if('error' in r)throw new ApiError(422,String(r.error));
  return json(r);
 }catch(e){return failure(e)}}

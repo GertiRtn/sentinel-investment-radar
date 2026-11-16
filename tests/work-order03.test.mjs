@@ -509,6 +509,31 @@ await test('decision workflow: implied expectations → three-way comparison →
  assert.equal((await db.prepare("SELECT COUNT(*) n FROM signal_log WHERE owner=? AND kind NOT IN ('practice_trade','discovery_case','decision_snapshot','decision_review')").bind(owner).first()).n,0);assert.equal((await db.prepare("SELECT COUNT(*) n FROM signal_log WHERE owner=? AND kind='practice_trade'").bind(owner).first()).n,1);
  for(const x of [imp.data,inc.data,cmp.data,save.data,reopened.data,rev.data,replay.data])assert.ok(!BANNED.test(JSON.stringify(x).replace(/Decision Workflow Fixture[^"]*/g,'')),'banned words absent');
 });
+await test('saving a decision recalculates on the server: an input that changed after the comparison is stored as recalculated and the response flags it',async()=>{
+ const owner='decision-owner',caseId='discovery-case:decision-fixture',trades=async()=>(await db.prepare("SELECT COUNT(*) n FROM signal_log WHERE owner=? AND kind='practice_trade'").bind(owner).first()).n;
+ // 1. The comparison as the user sees it: cash $9,800 and 10 HLD shares.
+ const shown=(await req('/decision-compare','POST',{symbol:'DWF'},owner)).data;assert.equal(shown.practice.cashCents,980_000);assert.equal(shown.options[1].cashAfterCents,880_000);
+ // Saving straight away: every figure matches what was on screen.
+ const same=await req('/decision-snapshot','POST',{action:'save',caseId,requestId:crypto.randomUUID(),checkpoint:'quarterly_revenue_yoy',shown},owner);assert.equal(same.status,200,JSON.stringify(same.data));
+ assert.equal(same.data.check.status,'matches',JSON.stringify(same.data.check));assert.deepEqual(same.data.check.differences,[]);assert.equal(same.data.calculatedAt,same.data.snapshot.alternatives.preparedAt);
+ // 2. An input changes before Save is pressed: a second practice purchase of 25 HLD shares ($500).
+ const t=new Date().toISOString(),open2={version:'practice-v2',action:'open',sequence:2,positionId:'dw-pos-2',symbol:'HLD',amountCents:50000,quantityMicros:25_000_000,price:{priceCents:2000,at:t,rawEventId:'r',source:'IEX midpoint'},spy:{priceCents:50000,at:t,rawEventId:'r',source:'IEX midpoint'},thesis:'',exitPlan:'',killCondition:'',conviction:50,caseId:null,evidenceScore:null,createdAt:t};
+ await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'practice_trade',NULL,?)").bind('dw-trade-2',owner,t,JSON.stringify(open2)).run();assert.equal(await trades(),2);
+ // 3. Save, sending the stale on-screen comparison. The server recalculates; the stale numbers are never stored.
+ const r=await req('/decision-snapshot','POST',{action:'save',caseId,requestId:crypto.randomUUID(),checkpoint:'quarterly_revenue_yoy',shown},owner);assert.equal(r.status,200,JSON.stringify(r.data));
+ const stored=JSON.parse((await db.prepare('SELECT body FROM signal_log WHERE id=?').bind(r.data.id).first()).body);
+ assert.equal(stored.practiceBefore.cashCents,930_000,'the stored snapshot holds the recalculated cash');assert.equal(stored.alternatives.options[1].cashAfterCents,830_000);assert.equal(stored.alternatives.options[0].cashAfterCents,930_000);
+ assert.ok(!JSON.stringify(stored).includes('"shown"'),'the on-screen comparison is not stored');assert.equal(r.data.raw,JSON.stringify(stored),'the response carries the stored text');
+ assert.equal(r.data.check.status,'differs');assert.match(r.data.check.text,/changed between the comparison on screen and the moment you pressed save\. The saved values are the recalculated ones\./);
+ const diff=(option,field)=>r.data.check.differences.find(x=>x.option===option&&x.field===field);
+ assert.deepEqual([diff('Keep the portfolio','cash after').shown,diff('Keep the portfolio','cash after').saved],[980_000,930_000]);assert.deepEqual([diff('Add DWF','cash after').shown,diff('Add DWF','cash after').saved],[880_000,830_000]);
+ assert.ok(diff('Add DWF','if SPY moves -10%'),'the scenario value moved too (more HLD at beta 0.5)');assert.equal(diff('all','starting portfolio'),undefined,'cash moved into HLD at its close: the total is unchanged');
+ assert.equal(r.data.calculatedAt,stored.alternatives.preparedAt);assert.ok(r.data.calculatedAt>=shown.preparedAt);assert.equal(r.data.check.shownPreparedAt,shown.preparedAt);
+ // Without `shown` nothing can be checked, and that is said.
+ assert.equal((await req('/decision-snapshot','POST',{action:'save',caseId,checkpoint:'quarterly_revenue_yoy',shown},owner)).status,400,'a request id is still required');
+ const none=await req('/decision-snapshot','POST',{action:'save',caseId,requestId:crypto.randomUUID(),checkpoint:'quarterly_revenue_yoy'},owner);assert.equal(none.data.check.status,'not_checked');
+ for(const x of [same.data.check,r.data.check,none.data.check])assert.ok(!/\b(undervalued|overvalued|cheap|expensive|upside|target|buy|sell|should)\b/i.test(JSON.stringify(x)));
+});
 await test('discovery funnel route: read-only counts from stored records reconcile; the window is validated',async()=>{
  const before=(await db.prepare("SELECT COUNT(*) n FROM signal_log").first()).n;
  for(const h of [24,96,168]){const r=await req('/discovery-funnel?hours='+h,'GET',undefined,'auto-owner');assert.equal(r.status,200,JSON.stringify(r.data));assert.equal(r.data.reconciliation.ok,true,JSON.stringify(r.data.reconciliation));assert.equal(r.data.windowHours,h);}

@@ -678,3 +678,9 @@ It did not have #36 (company page polish) or #37 (investment case).
 **Needs live data or a future date:** every thesis checkpoint (next filings); real implied-expectations results (after the next ingest stores share counts, and after the capex tag list is widened); funnel counts; replay depth; browser checks.
 
 **Next:** (1) widen the capex and debt tag lists as one versioned change (with PR 2's debt fields); (2) compare the Site tree, publish, then walk the click path on EME and one financial company; (3) the stretch shortlist on Discover was not started.
+
+## 2026-11-16 (later) — Claude Code (Opus): snapshot wording and saved-vs-shown check (PR #42)
+
+**Problem:** the Save screen said the options were saved "exactly as they are now", but the server recalculates them when Save is pressed, so a saved record could differ from what was on screen.
+**Fix:** the server still recalculates and stores only its own values. The browser now sends the comparison it showed (`shown`); `compareShownToSaved` (pure, `decision-snapshot.ts`) checks it figure by figure (budget, starting total, and per option: status, cash after, entry and exit costs, invested amount, stock weight to 0.1 point, each scenario value) and the save response returns `calculatedAt` and `check` (`matches` / `differs` with each difference / `not_checked`). `shown` is never stored. The panel shows the saved values, when they were calculated, and a highlighted table of any figure that changed. New wording: "Saved as calculated when you pressed save".
+**Verified:** 265/265 (+1 pure, +1 Miniflare: a practice purchase between compare and save; the stored snapshot holds the recalculated cash $9,300, not the $9,800 on screen, and the response lists both). `tsc` clean, build OK. Not checked in a browser.

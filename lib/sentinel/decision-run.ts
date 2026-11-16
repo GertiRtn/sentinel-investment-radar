@@ -14,7 +14,7 @@ import {practiceState,type PracticeTrade} from './practice';
 import {AUTO_POLICY} from './auto-practice';
 import {impliedExpectations,type PriceInput} from './implied-expectations';
 import {compareDecision,betaFromCloses,type Beta} from './decision-compare';
-import {SNAPSHOT_VERSION,checkpointFor,reviewSnapshot,performance,evaluateCheckpoint,type CheckpointId} from './decision-snapshot';
+import {SNAPSHOT_VERSION,checkpointFor,reviewSnapshot,performance,evaluateCheckpoint,compareShownToSaved,type CheckpointId} from './decision-snapshot';
 
 const SYMBOL=/^[A-Z][A-Z0-9.\-]{0,9}$/,DAY=86400000;
 export const DEFAULT_BUDGET_CENTS=AUTO_POLICY.positionCents; // the standard position the idea card uses
@@ -83,12 +83,18 @@ export async function compareFor(owner:string,symbol:string,budgetCents:number,n
 type Row={id:string;created_at:string;body:string};
 const snapshotRow=(owner:string,id:string)=>database().prepare("SELECT id,created_at,body FROM signal_log WHERE id=? AND owner=? AND kind='decision_snapshot'").bind(id,owner).first<Row>();
 
-/** Save what is known and computed now. Idempotent on (owner, case, request id): a retry returns the stored record. */
-export async function saveSnapshot(owner:string,input:{caseId:string;requestId:string;budgetCents:number;checkpoint:CheckpointId}){
+/**
+ * Save what is known and computed when Save is pressed. Everything is recalculated on the server; numbers sent by the
+ * browser are never stored. `shown` (the comparison the browser displayed) is only compared with the saved values so the
+ * response can say whether anything changed in between. Idempotent on (owner, case, request id): a retry returns the
+ * stored record.
+ */
+export async function saveSnapshot(owner:string,input:{caseId:string;requestId:string;budgetCents:number;checkpoint:CheckpointId;shown?:unknown}){
  const db=database(),kase=await db.prepare("SELECT id,created_at,entity,body FROM signal_log WHERE id=? AND owner=? AND kind='discovery_case'").bind(input.caseId,owner).first<Row&{entity:string|null}>();
  if(!kase)return null;
  const id='decision-snapshot:'+await hash(JSON.stringify([owner,input.caseId,input.requestId]));
- const prior=await snapshotRow(owner,id);if(prior)return {id,raw:prior.body,snapshot:JSON.parse(prior.body),appended:false};
+ const saved=(raw:string,appended:boolean)=>{const snapshot=JSON.parse(raw);return {id,raw,snapshot,appended,calculatedAt:snapshot.alternatives?.preparedAt??snapshot.savedAt,check:compareShownToSaved(input.shown,snapshot.alternatives)};};
+ const prior=await snapshotRow(owner,id);if(prior)return saved(prior.body,false);
  const cb=JSON.parse(kase.body),symbol=String(cb.symbol??''),now=iso();
  if(!SYMBOL.test(symbol))return {error:'The case has no usable ticker.'} as const;
  const implied=await impliedFor(owner,symbol,now),compare=await compareFor(owner,symbol,input.budgetCents,now);
@@ -107,7 +113,7 @@ export async function saveSnapshot(owner:string,input:{caseId:string;requestId:s
  const raw=JSON.stringify(body);
  await db.prepare("INSERT OR IGNORE INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'decision_snapshot',?,?)").bind(id,owner,now,kase.entity,raw).run();
  const stored=await snapshotRow(owner,id);
- return {id,raw:stored!.body,snapshot:JSON.parse(stored!.body),appended:stored!.body===raw};
+ return saved(stored!.body,stored!.body===raw);
 }
 
 async function computeReview(owner:string,s:any,now:string){

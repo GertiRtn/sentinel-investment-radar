@@ -42,9 +42,9 @@ function Review({ r }: { r: any }) {
 
 export function DecisionComparePanel({ symbol, caseId }: { symbol: string; caseId: string | null }) {
   const [c, setC] = useState<any>(null), [budget, setBudget] = useState("1000"), [busy, setBusy] = useState(""), [error, setError] = useState("");
-  const [meta, setMeta] = useState<any>(null), [checkpoint, setCheckpoint] = useState("quarterly_revenue_yoy"), [opened, setOpened] = useState<any>(null);
+  const [meta, setMeta] = useState<any>(null), [checkpoint, setCheckpoint] = useState("quarterly_revenue_yoy"), [opened, setOpened] = useState<any>(null), [saved, setSaved] = useState<any>(null);
   const list = useCallback(async () => { try { const r = await fetch(`/api/decision-snapshot?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" }); if (r.ok) setMeta(await r.json()); } catch { } }, [symbol]);
-  useEffect(() => { setC(null); setOpened(null); list(); }, [symbol, list]);
+  useEffect(() => { setC(null); setOpened(null); setSaved(null); list(); }, [symbol, list]);
   const cents = () => Math.round(Number(budget) * 100);
   async function call(tag: string, url: string, init?: RequestInit) {
     setBusy(tag); setError("");
@@ -53,8 +53,8 @@ export function DecisionComparePanel({ symbol, caseId }: { symbol: string; caseI
   }
   const post = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   async function compare() { if (!(cents() >= 100)) { setError("Enter a budget of at least $1."); return; } const j = await call("compare", "/api/decision-compare", post({ symbol, budgetCents: cents() })); if (j) setC(j); }
-  async function save() { const j = await call("save", "/api/decision-snapshot", post({ action: "save", caseId, requestId: crypto.randomUUID(), budgetCents: cents(), checkpoint })); if (j) { await list(); await reopen(j.id); } }
-  async function reopen(id: string) { const j = await call("open", `/api/decision-snapshot?id=${encodeURIComponent(id)}`); if (j) setOpened(j); }
+  async function save() { const j = await call("save", "/api/decision-snapshot", post({ action: "save", caseId, requestId: crypto.randomUUID(), budgetCents: cents(), checkpoint, shown: c })); if (j) { setSaved(j); await list(); await reopen(j.id); } }
+  async function reopen(id: string) { const j = await call("open", `/api/decision-snapshot?id=${encodeURIComponent(id)}`); if (j) { setOpened(j); setSaved((s: any) => (s?.id === id ? s : null)); } }
   async function record() { const j = await call("review", "/api/decision-snapshot", post({ action: "review", id: opened.id })); if (j) setOpened({ ...opened, review: j.review, recordedReviews: j.recordedReviews }); }
   return (
     <section aria-label="What acting would change" className="rounded-3xl border border-border bg-card/60 p-6 text-[13px]">
@@ -71,14 +71,20 @@ export function DecisionComparePanel({ symbol, caseId }: { symbol: string; caseI
           <label className="mt-2 block text-xs text-muted-foreground">One condition to check at the next filing
             <select value={checkpoint} onChange={e => setCheckpoint(e.target.value)} className="mt-1 block h-11 w-full rounded-xl border border-border bg-background px-2 text-sm text-foreground">{Object.entries(meta?.checkpoints ?? { quarterly_revenue_yoy: "Next filing: reported quarterly revenue at or above the same quarter a year earlier." }).map(([k, v]) => <option key={k} value={k}>{String(v)}</option>)}</select></label>
           <button type="button" onClick={save} disabled={!!busy} className="mt-2 min-h-11 w-full rounded-xl border border-border text-sm hover:bg-muted disabled:opacity-50">{busy === "save" ? "Saving…" : "Save snapshot"}</button>
-          <p className="mt-1 text-[11px] text-muted-foreground">Saves the price, what the price assumes, your practice portfolio and these three options exactly as they are now. A saved snapshot is never changed.</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Saved as calculated when you pressed save: the price, what the price assumes, your practice portfolio and the three options are recalculated at that moment, so they can differ from the figures above if anything changed. A saved snapshot is never changed.</p>
         </div> : <p className="mt-3 text-xs text-muted-foreground">A snapshot needs a research case for this company.</p>}
       </div>}
       {meta?.snapshots?.length > 0 && <><H>Saved snapshots</H><ul className="text-xs">{meta.snapshots.map((s: any) => <li key={s.id} className="flex items-center justify-between gap-2 border-t border-border py-1.5"><span>{when(s.savedAt)} · {money(s.budgetCents)} · check by {s.dueBy}</span><button type="button" onClick={() => reopen(s.id)} disabled={!!busy} className="rounded-lg border border-border px-2 py-1 hover:bg-muted">Reopen</button></li>)}</ul></>}
       {opened && <div className="mt-4 rounded-2xl border border-border p-3">
         <p className="text-xs font-medium">Snapshot saved {when(opened.snapshot.savedAt)} <span className="font-normal text-muted-foreground">· shown as stored</span></p>
         <p className="mt-1 text-xs text-muted-foreground">Price then: {opened.snapshot.price.value === null ? "unavailable" : `$${opened.snapshot.price.value.toFixed(2)} (IEX close ${opened.snapshot.price.sessionDate})`} · What the price assumed: {opened.snapshot.impliedExpectations.status === "computed" ? (opened.snapshot.impliedExpectations.implied.status === "solved" ? `${opened.snapshot.impliedExpectations.implied.growthPct}% a year` : "outside range") : "unavailable"}</p>
-        <H>The three options then</H><Options c={opened.snapshot.alternatives} />
+        {saved?.id === opened.id && <div className="mt-3 rounded-xl border border-border p-2 text-xs" role="status">
+          <p className="font-medium">Saved as calculated when you pressed save ({when(saved.calculatedAt)})</p>
+          <p className={`mt-1 ${saved.check.status === "differs" ? "text-amber-200" : "text-muted-foreground"}`}>{saved.check.status === "differs" ? "Differs from the comparison on screen. " : ""}{saved.check.text}</p>
+          {saved.check.differences.length > 0 && <table className="mt-1 w-full tabular-nums"><thead><tr className="text-left text-muted-foreground"><th className="pr-2 font-normal">Option</th><th className="pr-2 font-normal">Figure</th><th className="pr-2 font-normal">On screen</th><th className="font-normal">Saved</th></tr></thead>
+            <tbody>{saved.check.differences.map((x: any, i: number) => { const f = (v: any) => (typeof v === "number" ? (x.field === "stock weight" ? `${v.toFixed(1)}%` : money(v)) : String(v ?? "—")); return <tr key={i} className="border-t border-border"><td className="pr-2">{x.option}</td><td className="pr-2">{x.field}</td><td className="pr-2">{f(x.shown)}</td><td>{f(x.saved)}</td></tr>; })}</tbody></table>}
+        </div>}
+        <H>The three options as saved</H><Options c={opened.snapshot.alternatives} />
         <H>Review, computed now</H><Review r={opened.review} />
         <button type="button" onClick={record} disabled={!!busy} className="mt-2 min-h-11 w-full rounded-xl border border-border text-sm hover:bg-muted disabled:opacity-50">{busy === "review" ? "Recording…" : "Record this review"}</button>
         <p className="mt-1 text-[11px] text-muted-foreground">{opened.recordedReviews.length} review{opened.recordedReviews.length === 1 ? "" : "s"} recorded. Reviews are separate records; the snapshot stays as saved.</p>

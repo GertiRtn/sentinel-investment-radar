@@ -207,3 +207,17 @@ test('3F: funnel counts reconcile on a fixture; rejected reasons are counted sep
  const odd=funnelCounts({now,windowHours:168,queueWindowHours:96,capacityPerRun:6,candidates,cases:[...cases.slice(0,2),{...cases[2],direction:undefined}],attempts});
  assert.equal(odd.reconciliation.ok,false);const bad=odd.reconciliation.checks.filter(c=>!c.ok);assert.equal(bad.length,1);assert.match(bad[0].name,/good \+ neutral/);assert.equal(bad[0].difference,1,'the discrepancy is reported with its size');
 });
+
+test('3D: the on-screen comparison is checked against the saved one, figure by figure, and never replaces it',()=>{
+ const b=beta=>({beta,r2:.5,days:252,from:'a',to:'b'}),base={symbol:'NEW',budgetCents:100_000,cashCents:600_000,holdings:[{symbol:'AAA',valueCents:250_000}],betas:{AAA:b(1),NEW:b(2)}};
+ const shown={...compareDecision(base),preparedAt:'2026-11-16T10:00:00.000Z'},saved={...compareDecision({...base,cashCents:550_000}),preparedAt:'2026-11-16T10:05:00.000Z'};
+ assert.equal(snap.compareShownToSaved(shown,shown).status,'matches');
+ const c=snap.compareShownToSaved(shown,saved);assert.equal(c.status,'differs');assert.equal(c.shownPreparedAt,'2026-11-16T10:00:00.000Z');
+ assert.deepEqual(c.differences.find(d=>d.option==='Keep the portfolio'&&d.field==='cash after'),{option:'Keep the portfolio',field:'cash after',shown:600_000,saved:550_000});
+ assert.ok(c.differences.some(d=>d.option==='all'&&d.field==='starting portfolio'));assert.ok(c.differences.some(d=>d.field==='if SPY moves -10%'));
+ // Weight compared to 0.1 point; an option that became unavailable is a difference in status.
+ const w=x=>({...shown,options:shown.options.map(o=>o.id==='stock'?{...o,stockWeightPct:x}:o)});assert.equal(snap.compareShownToSaved(w(10.51),w(10.54)).status,'matches');assert.equal(snap.compareShownToSaved(w(10.51),w(10.56)).status,'differs');
+ const poor=snap.compareShownToSaved(shown,compareDecision({...base,cashCents:50_000}));assert.ok(poor.differences.some(d=>d.option==='Add NEW'&&d.field==='status'&&d.saved==='unavailable'));
+ assert.equal(snap.compareShownToSaved(null,saved).status,'not_checked');assert.equal(snap.compareShownToSaved({options:'x'},saved).status,'not_checked');
+ for(const x of [c,poor])assert.ok(!BANNED.test(JSON.stringify(x)));
+});
