@@ -82,7 +82,7 @@ test('3B: every unavailable case gives its exact reason and no number',()=>{
  const una=(input,re)=>{const r=impliedExpectations(input);assert.equal(r.status,'unavailable');assert.match(r.missing.join(' | '),re);assert.equal(r.implied,undefined);assert.equal(r.marketValue,undefined);assert.ok(!BANNED.test(JSON.stringify(r)));return r;};
  una(build(company(),{sic:'6021'}),/Financial company \(SIC 6021\)/);
  una(build(company({cfo:[90,100,110,120,20]})),/Base cash flow: .*positive cash-flow scenario/);
- una(build(company({shares:[]})),/Official share count: no cover-page count/);
+ una(build(company({shares:[]})),/Official share count: the company.s filings report no cover-page count/);
  una(build(company(),{price:null}),/Price: no timestamped IEX price/);
  una(build(company(),{price:{value:50,at:'2026-02-20T21:00:00.000Z',basis:'last_close',source:'x',rawEventId:'b'}}),/Stale price/);
  // Basis mismatch: capex comes from a different filing than operating cash flow.
@@ -220,4 +220,88 @@ test('3D: the on-screen comparison is checked against the saved one, figure by f
  const poor=snap.compareShownToSaved(shown,compareDecision({...base,cashCents:50_000}));assert.ok(poor.differences.some(d=>d.option==='Add NEW'&&d.field==='status'&&d.saved==='unavailable'));
  assert.equal(snap.compareShownToSaved(null,saved).status,'not_checked');assert.equal(snap.compareShownToSaved({options:'x'},saved).status,'not_checked');
  for(const x of [c,poor])assert.ok(!BANNED.test(JSON.stringify(x)));
+});
+
+// ---- review fixes batch 1 (2026-11-16) -------------------------------------------------------
+const F=await load(`export * from './lib/sentinel/financial';export * from './lib/sentinel/implied-expectations';export {createSaveGuard} from './lib/sentinel/save-guard';export * as snap from './lib/sentinel/decision-snapshot';export {compareDecision} from './lib/sentinel/decision-compare';`);
+
+test('tag list v2 is opt-in: v1 figures are unchanged by v2-only facts; v2 reads EMCOR- and FANG-style capex and the new debt tags, and says which list it used',()=>{
+ // EMCOR-style: capex only as PaymentsToAcquireProductiveAssets. FANG-style: acquisitions as PaymentsToAcquireOilAndGasProperty, drilling as PaymentsToExploreAndDevelop…; debt as DebtCurrent + LongTermDebt.
+ const data=company({debtNC:null});const us=data.facts['us-gaap'];
+ us.PaymentsToAcquireProductiveAssets=us.PaymentsToAcquirePropertyPlantAndEquipment;delete us.PaymentsToAcquirePropertyPlantAndEquipment;
+ us.DebtCurrent={units:{USD:[inst(2025,20e6)]}};us.LongTermDebt={units:{USD:[inst(2025,100e6)]}};us.ShortTermBorrowings={units:{USD:[inst(2025,5e6)]}};
+ const facts=F.parseFacts(data,'sec:0000000001','raw-1','2026-02-16T00:00:00.000Z');
+ assert.ok(facts.some(f=>f.metric==='capex'&&f.source_tag==='PaymentsToAcquireProductiveAssets'),'stored for every list');
+ const v1=F.derive(facts,asOf),v2=F.derive(facts,asOf,undefined,F.TAG_LIST_V2),at=(fs,m)=>fs.find(f=>f.metric===m&&f.period_end==='2025-12-31');
+ assert.equal(at(v1,'capex').value,null,'v1 does not see the new tag');assert.equal(at(v1,'total_debt').value,null);assert.equal(at(v1,'capex').tagList,'xbrl-tags-v1');
+ const noNew=F.parseFacts(company({debtNC:null}),'sec:0000000001','raw-1','2026-02-16T00:00:00.000Z').filter(f=>f.source_tag!=='PaymentsToAcquirePropertyPlantAndEquipment');
+ assert.deepEqual(F.derive(noNew,asOf).map(f=>[f.metric,f.period_end,f.value]),v1.map(f=>[f.metric,f.period_end,f.value]),'v1 output identical with or without the v2-only facts');
+ assert.equal(at(v2,'capex').value,30e6);assert.equal(at(v2,'capex').method,'reported:PaymentsToAcquireProductiveAssets');assert.equal(at(v2,'capex').tagList,'xbrl-tags-v2');
+ assert.equal(at(v2,'total_debt').value,100e6,'components incomplete (no noncurrent), so the combined LongTermDebt is used, not DebtCurrent alone');
+ const comb=company({debtNC:null});comb.facts['us-gaap'].LongTermDebt={units:{USD:[inst(2025,100e6)]}};const v2b=F.derive(F.parseFacts(comb,'e','r','x'),asOf,undefined,F.TAG_LIST_V2);
+ assert.equal(at(v2b,'total_debt').value,100e6);assert.equal(at(v2b,'total_debt').method,'reported-combined-debt-v1');
+ assert.equal(at(v2,'short_term_borrowings').value,5e6);assert.equal(at(v1,'short_term_borrowings'),undefined);
+ // FANG-style: the acquisitions tag is never capex; the development tag is.
+ const fang=company();const fu=fang.facts['us-gaap'];fu.PaymentsToAcquireOilAndGasProperty={units:{USD:[row(2025,59e6)]}};fu.PaymentsToExploreAndDevelopOilAndGasProperties={units:{USD:[row(2025,35e6)]}};delete fu.PaymentsToAcquirePropertyPlantAndEquipment;
+ const fv2=F.derive(F.parseFacts(fang,'e','r','x'),asOf,undefined,F.TAG_LIST_V2);assert.equal(at(fv2,'capex').value,35e6);assert.equal(at(fv2,'capex').method,'reported:PaymentsToExploreAndDevelopOilAndGasProperties');
+ assert.ok(!F.parseFacts(fang,'e','r','x').some(f=>f.source_tag==='PaymentsToAcquireOilAndGasProperty'));
+ // Quarterly figures follow the same rule.
+ const q=company();q.facts['us-gaap'].PaymentsToAcquireProductiveAssets={units:{USD:[{start:'2026-01-01',end:'2026-03-31',val:7,accn:'0000000001-26-000002',fy:2026,fp:'Q1',form:'10-Q',filed:'2026-04-30'}]}};
+ const qf=F.parseFacts(q,'e','r','x');assert.equal(F.quarterlyFigures(qf,'2026-06-01T00:00:00Z').filter(f=>f.metric==='capex').length,0);assert.equal(F.quarterlyFigures(qf,'2026-06-01T00:00:00Z',undefined,F.TAG_LIST_V2).filter(f=>f.metric==='capex').length,1);
+ assert.throws(()=>F.derive(facts,asOf,undefined,'xbrl-tags-v9'),/Unknown tag list/);
+});
+
+test('SEC read states are separate: not loaded, read failed (message kept), loaded before share counts were read, filings report none',()=>{
+ const base=build(company({shares:[]}));
+ const nl=F.impliedExpectations({...base,sec:{state:'not_loaded'}});assert.equal(nl.status,'unavailable');assert.deepEqual(nl.missing,['SEC data not loaded yet: no successful SEC read is stored for this company.']);assert.equal(nl.canLoadShareCounts,false);
+ const fl=F.impliedExpectations({...base,sec:{state:'failed',error:'SEC returned HTTP 503.'}});assert.equal(fl.missing[0],'SEC read failed: SEC returned HTTP 503. This is a read error, not missing data; stored records are kept. Try again later.');assert.equal(fl.missing.length,1,'no knock-on reasons from data that was never read');assert.deepEqual(fl.sec,{state:'failed',error:'SEC returned HTTP 503.'});
+ const old=F.impliedExpectations({...base,sec:{state:'loaded',parserCurrent:false,tagList:'xbrl-tags-v2'}});assert.match(old.missing[0],/^Share count not loaded yet: this company.s SEC data was stored before Sentinel read cover-page share counts\. It loads at the next SEC refresh, or with .Load share counts. below\.$/);assert.equal(old.canLoadShareCounts,true);
+ const none=F.impliedExpectations({...base,sec:{state:'loaded',parserCurrent:true,tagList:'xbrl-tags-v2'}});assert.match(none.missing[0],/^Official share count: the company.s filings report no cover-page count/);assert.equal(none.canLoadShareCounts,false);
+ const cfOld=F.impliedExpectations({...build(company({cfo:[90,100,110,120,20]})),sec:{state:'loaded',parserCurrent:false,tagList:'xbrl-tags-v2'}});assert.match(cfOld.missing.join(' '),/stored before the wider tag list \(xbrl-tags-v2\)/);
+ assert.equal(F.IMPLIED_VERSION,'implied-expectations-v2');
+ for(const x of [nl,fl,old,none,cfOld])assert.ok(!BANNED.test(JSON.stringify(x)));
+});
+
+test('ADR: a share count from a 20-F or 40-F makes the result unavailable: ADR ratio not stored',()=>{
+ for(const form of ['20-F','40-F','20-F/A']){
+  const d=company();d.facts.dei.EntityCommonStockSharesOutstanding.units.shares[0].form=form;
+  const r=F.impliedExpectations(build(d));assert.equal(r.status,'unavailable');assert.equal(r.implied,undefined);
+  assert.equal(r.missing[0],`Unavailable: ADR ratio not stored. The share count comes from a ${form}, which counts the company’s ordinary shares; how many of them one US-listed share represents is not stored, so the market value cannot be worked out.`);
+ }
+ assert.equal(F.impliedExpectations(build(company())).status,'computed','10-K count is fine');
+});
+
+test('checks not run are listed in one visible line',()=>{
+ assert.equal(F.impliedExpectations(build(company())).notRun.text,'Checks not run: noncontrolling interests, preferred stock.');
+ const r=F.impliedExpectations(build(company({debtNC:null}),{sic:null}));assert.equal(r.notRun.text,'Checks not run: noncontrolling interests, preferred stock, company type (no industry code), debt (not tagged).');assert.deepEqual(r.notRun.ids,['nci','preferred','company_type','leverage']);
+ assert.ok(!BANNED.test(r.notRun.text));
+});
+
+test('checkpoint: overdue after the due date with no qualifying filing, and it says which filing it waits for',()=>{
+ const data=company(),facts=F.parseFacts(data,'sec:0000000001','raw-1','x'),savedAt='2026-03-02T15:00:00.000Z';
+ const cp=F.snap.checkpointFor('quarterly_revenue_yoy',savedAt,F.derive(facts,savedAt),F.quarterlyFigures(facts,savedAt));
+ const before=F.snap.evaluateCheckpoint(cp,savedAt,'2026-06-10T12:00:00.000Z',F.derive(facts,savedAt),F.quarterlyFigures(facts,savedAt));
+ assert.equal(cp.dueBy,'2026-06-10');assert.equal(before.status,'not_yet','on the due date itself: not yet');
+ assert.equal(before.text,'Not yet: no filing made after this snapshot reports a later period. Waiting for: a 10-Q filed after 2026-03-02 reporting a quarter that ends after the latest quarter on file. A fourth quarter reported only in a 10-K does not count: it is not a separate three-month figure.');
+ const late=F.snap.evaluateCheckpoint(cp,savedAt,'2026-06-11T00:00:01.000Z',F.derive(facts,savedAt),F.quarterlyFigures(facts,savedAt));
+ assert.equal(late.status,'overdue');assert.match(late.text,/^Overdue: no qualifying filing by the due date \(2026-06-10\)\. Waiting for: a 10-Q filed after 2026-03-02/);assert.equal(late.waitingFor,before.waitingFor);
+ const an=F.snap.checkpointFor('annual_cash_flow_positive',savedAt,F.derive(facts,savedAt),[]);
+ assert.equal(F.snap.evaluateCheckpoint(an,savedAt,'2026-07-01T00:00:00.000Z',F.derive(facts,savedAt),[]).text,'Overdue: no qualifying filing by the due date (2026-06-10). Waiting for: a 10-K filed after 2026-03-02 reporting a fiscal year that ends after 2025-12-31.');
+ assert.equal(F.snap.reviewSnapshot({snapshot:{savedAt,budgetCents:1,price:{sessionDate:null},checkpoint:an},now:'2026-07-01T00:00:00.000Z',annual:F.derive(facts,savedAt),quarterly:[],stock:null,spy:null}).business.status,'overdue');
+ assert.match(F.snap.reviewSnapshot({snapshot:{savedAt,budgetCents:1,price:{sessionDate:null},checkpoint:an},now:'2026-07-01T00:00:00.000Z',secError:'SEC read failed: HTTP 503.',annual:null,quarterly:null,stock:null,spy:null}).business.text,/^Unavailable: SEC read failed: HTTP 503\./);
+ for(const x of [before,late])assert.ok(!BANNED.test(x.text));
+});
+
+test('save guard: one request id per comparison; a click while saving is ignored; a new comparison gets a new id',()=>{
+ let n=0;const g=F.createSaveGuard(()=>'id-'+(++n)),c1={a:1},c2={a:1};
+ assert.equal(g.idFor(c1),'id-1');assert.equal(g.idFor(c1),'id-1','double click: same id');
+ assert.equal(g.begin(),true);assert.equal(g.begin(),false,'second click while the first save runs is ignored');assert.equal(g.busy,true);g.end();assert.equal(g.begin(),true);g.end();
+ assert.equal(g.idFor(c2),'id-2','a new comparison, even with equal content, is a new decision');
+});
+
+test('holdings over the price limit are labelled "not priced: over the limit", never valued',()=>{
+ const b=beta=>({beta,r2:.5,days:252,from:'a',to:'b'});
+ const r=F.compareDecision({symbol:'NEW',budgetCents:100_000,cashCents:600_000,holdings:[{symbol:'AAA',valueCents:250_000},{symbol:'ZZZ',valueCents:null,reason:'not priced: over the limit of 20 companies per comparison'}],betas:{AAA:b(1),NEW:b(1)}});
+ assert.equal(r.start.totalCents,null);assert.deepEqual(r.start.holdings.find(h=>h.symbol==='ZZZ'),{symbol:'ZZZ',valueCents:null,status:'not priced: over the limit of 20 companies per comparison'});
+ assert.equal(r.options[0].scenarios[0].reason,'No current price for ZZZ (not priced: over the limit of 20 companies per comparison).');
 });

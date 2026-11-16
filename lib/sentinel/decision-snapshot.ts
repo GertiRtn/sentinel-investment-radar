@@ -34,11 +34,22 @@ export function checkpointFor(id: CheckpointId, savedAt: string, annual: Figure[
     note: 'Checked against the first filing made after this snapshot that reports a later period. Fixed template; no model text.' };
 }
 
-type Thesis = { status: 'met' | 'not_met' | 'not_yet' | 'unavailable'; text: string; evidence?: { periodEnd: string; value: number; compared?: { periodEnd: string; value: number } | null; accession: string | null; filed: string | null } };
+type Thesis = { status: 'met' | 'not_met' | 'not_yet' | 'overdue' | 'unavailable'; text: string; waitingFor?: string; evidence?: { periodEnd: string; value: number; compared?: { periodEnd: string; value: number } | null; accession: string | null; filed: string | null } };
+/** Which filing the checkpoint waits for, in words. */
+export function waitingForText(cp: ReturnType<typeof checkpointFor>, savedAt: string) {
+  const d = savedAt.slice(0, 10);
+  if (cp.template === 'annual_cash_flow_positive') return `a 10-K filed after ${d} reporting a fiscal year that ends after ${cp.baseline.latestAnnualEnd ?? 'the latest year on file'}.`;
+  return `a 10-Q filed after ${d} reporting a quarter that ends after ${cp.baseline.latestQuarterEnd ?? 'the latest quarter on file'}. A fourth quarter reported only in a 10-K does not count: it is not a separate three-month figure.`;
+}
 export function evaluateCheckpoint(cp: ReturnType<typeof checkpointFor>, savedAt: string, now: string, annual: Figure[], quarterly: Figure[]): Thesis {
   const later = (figs: Figure[], metric: string, after: string | null) => figs.filter(f => f.metric === metric && f.value !== null && f.known_from !== null && f.known_from > savedAt && f.known_from <= now && (!after || f.period_end > after)).sort((a, b) => a.period_end.localeCompare(b.period_end))[0] ?? null;
   const ev = (f: Figure, compared: Figure | null = null) => ({ periodEnd: f.period_end, value: f.value!, compared: compared ? { periodEnd: compared.period_end, value: compared.value! } : null, accession: f.inputs[0]?.accession ?? null, filed: f.inputs[0]?.filed ?? null });
-  const notYet: Thesis = { status: 'not_yet', text: 'Not yet: no filing made after this snapshot reports a later period.' };
+  const waitingFor = waitingForText(cp, savedAt);
+  const overdue = Date.parse(cp.dueBy + 'T23:59:59.999Z') < Date.parse(now);
+  // Overdue: the due date has passed with no qualifying filing. It is not a "no": the filing may still come.
+  const notYet: Thesis = overdue
+    ? { status: 'overdue', text: `Overdue: no qualifying filing by the due date (${cp.dueBy}). Waiting for: ${waitingFor}`, waitingFor }
+    : { status: 'not_yet', text: `Not yet: no filing made after this snapshot reports a later period. Waiting for: ${waitingFor}`, waitingFor };
   if (cp.template === 'quarterly_revenue_yoy') {
     const f = later(quarterly, 'revenue', cp.baseline.latestQuarterEnd); if (!f) return notYet;
     const prior = quarterly.find(p => p.metric === 'revenue' && p.value !== null && Math.abs((Date.parse(f.period_end) - Date.parse(p.period_end)) / DAY - 365) <= 12) ?? null;
@@ -80,9 +91,9 @@ export function performance(entryDate: string | null, budgetCents: number, stock
   };
 }
 
-export function reviewSnapshot(input: { snapshot: any; now: string; annual: Figure[] | null; quarterly: Figure[] | null; stock: Record<string, number> | null; spy: Record<string, number> | null }) {
+export function reviewSnapshot(input: { snapshot: any; now: string; secError?: string | null; annual: Figure[] | null; quarterly: Figure[] | null; stock: Record<string, number> | null; spy: Record<string, number> | null }) {
   const s = input.snapshot, perf = performance(s.price?.sessionDate ?? null, s.budgetCents, input.stock, input.spy);
-  const business: Thesis = !input.annual || !input.quarterly ? { status: 'unavailable', text: 'Unavailable: the company’s SEC figures could not be read.' } : evaluateCheckpoint(s.checkpoint, s.savedAt, input.now, input.annual, input.quarterly);
+  const business: Thesis = !input.annual || !input.quarterly ? { status: 'unavailable', text: 'Unavailable: ' + (input.secError ?? 'the company’s SEC figures could not be read.') } : evaluateCheckpoint(s.checkpoint, s.savedAt, input.now, input.annual, input.quarterly);
   return { version: REVIEW_VERSION, snapshotId: s.id ?? null, reviewedAt: input.now,
     business: { question: 'Did the business expectation materialize?', condition: s.checkpoint.condition, dueBy: s.checkpoint.dueBy, ...business },
     investment: { question: 'Did the investment perform?', ...perf.investment },

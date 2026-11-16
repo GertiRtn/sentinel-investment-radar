@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createSaveGuard } from "@/lib/sentinel/save-guard";
 
 /* Portfolio suitability: keep the portfolio, add the stock, or add SPY, from the same virtual Practice state
    (decision-compare-v1), then save the decision unchanged (decision-snapshot-v1) and review it later.
@@ -8,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 const money = (c: number | null | undefined) => (typeof c === "number" ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(c / 100) : "unavailable");
 const pct = (v: number | null | undefined, d = 2) => (typeof v === "number" && Number.isFinite(v) ? `${v >= 0 ? "+" : ""}${v.toFixed(d)}%` : "—");
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "unknown");
-const STATUS: Record<string, string> = { met: "Yes", not_met: "No", not_yet: "Not yet", unavailable: "Unavailable", computed: "" };
+const STATUS: Record<string, string> = { met: "Yes", not_met: "No", not_yet: "Not yet", overdue: "Overdue", unavailable: "Unavailable", computed: "" };
 const H = ({ children }: { children: React.ReactNode }) => <h3 className="mb-1 mt-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{children}</h3>;
 
 function Options({ c }: { c: any }) {
@@ -46,6 +47,7 @@ export function DecisionComparePanel({ symbol, caseId }: { symbol: string; caseI
   const list = useCallback(async () => { try { const r = await fetch(`/api/decision-snapshot?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" }); if (r.ok) setMeta(await r.json()); } catch { } }, [symbol]);
   useEffect(() => { setC(null); setOpened(null); setSaved(null); list(); }, [symbol, list]);
   const cents = () => Math.round(Number(budget) * 100);
+  const guard = useRef(createSaveGuard(() => crypto.randomUUID()));
   async function call(tag: string, url: string, init?: RequestInit) {
     setBusy(tag); setError("");
     try { const r = await fetch(url, init ?? { cache: "no-store" }); const j: any = await r.json(); if (!r.ok) throw new Error(j.error || "Request failed."); return j; }
@@ -53,7 +55,12 @@ export function DecisionComparePanel({ symbol, caseId }: { symbol: string; caseI
   }
   const post = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   async function compare() { if (!(cents() >= 100)) { setError("Enter a budget of at least $1."); return; } const j = await call("compare", "/api/decision-compare", post({ symbol, budgetCents: cents() })); if (j) setC(j); }
-  async function save() { const j = await call("save", "/api/decision-snapshot", post({ action: "save", caseId, requestId: crypto.randomUUID(), budgetCents: cents(), checkpoint, shown: c })); if (j) { setSaved(j); await list(); await reopen(j.id); } }
+  async function save() {
+    // One request id per comparison on screen, and no second save while one is running: a double click makes one snapshot.
+    const g = guard.current; if (!c || !g.begin()) return;
+    try { const j = await call("save", "/api/decision-snapshot", post({ action: "save", caseId, requestId: g.idFor(c), budgetCents: c.budgetCents, checkpoint, shown: c })); if (j) { setSaved(j); await list(); await reopen(j.id); } }
+    finally { g.end(); }
+  }
   async function reopen(id: string) { const j = await call("open", `/api/decision-snapshot?id=${encodeURIComponent(id)}`); if (j) { setOpened(j); setSaved((s: any) => (s?.id === id ? s : null)); } }
   async function record() { const j = await call("review", "/api/decision-snapshot", post({ action: "review", id: opened.id })); if (j) setOpened({ ...opened, review: j.review, recordedReviews: j.recordedReviews }); }
   return (

@@ -472,7 +472,7 @@ await test('decision workflow: implied expectations → three-way comparison →
  assert.equal((await req('/implied-expectations?symbol=DWF','GET',undefined,'owner-b')).status,404,'owner-scoped');assert.equal((await req('/implied-expectations?symbol=bad!','GET',undefined,owner)).status,400);
  // An incomplete company (the shared FIX fixture: figures end in 2023, no cover-page share count) lists exactly what is missing.
  const inc=await req('/implied-expectations?symbol=FIX','GET',undefined,'owner-a');assert.equal(inc.status,200,JSON.stringify(inc.data));assert.equal(inc.data.status,'unavailable');assert.equal(inc.data.implied,undefined);
- assert.ok(inc.data.missing.some(m=>/Official share count: no cover-page count/.test(m)));assert.ok(inc.data.missing.some(m=>/^Base cash flow: /.test(m)),JSON.stringify(inc.data.missing));assert.equal(inc.data.missing.length,3,'share count, price and base cash flow are each named');
+ assert.ok(inc.data.missing.some(m=>/Official share count: the company.s filings report no cover-page count/.test(m)));assert.ok(inc.data.missing.some(m=>/^Base cash flow: /.test(m)),JSON.stringify(inc.data.missing));assert.equal(inc.data.missing.length,3,'share count, price and base cash flow are each named');
  // 2. Three options from the same Practice state: cash $9,800 and 10 HLD shares at the last close ($200).
  const open={version:'practice-v2',action:'open',sequence:1,positionId:'dw-pos-1',symbol:'HLD',amountCents:20000,quantityMicros:10_000_000,price:{priceCents:2000,at:new Date().toISOString(),rawEventId:'r',source:'IEX midpoint'},spy:{priceCents:50000,at:new Date().toISOString(),rawEventId:'r',source:'IEX midpoint'},thesis:'',exitPlan:'',killCondition:'',conviction:50,caseId:null,evidenceScore:null,createdAt:new Date().toISOString()};
  await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'practice_trade',NULL,?)").bind('dw-trade-1',owner,open.createdAt,JSON.stringify(open)).run();
@@ -533,6 +533,61 @@ await test('saving a decision recalculates on the server: an input that changed 
  assert.equal((await req('/decision-snapshot','POST',{action:'save',caseId,checkpoint:'quarterly_revenue_yoy',shown},owner)).status,400,'a request id is still required');
  const none=await req('/decision-snapshot','POST',{action:'save',caseId,requestId:crypto.randomUUID(),checkpoint:'quarterly_revenue_yoy'},owner);assert.equal(none.data.check.status,'not_checked');
  for(const x of [same.data.check,r.data.check,none.data.check])assert.ok(!/\b(undervalued|overvalued|cheap|expensive|upside|target|buy|sell|should)\b/i.test(JSON.stringify(x)));
+});
+await test('review fixes: share-count backfill through ingest, SEC load states, no snapshot without a price, one snapshot per double click, over-limit holdings labelled',async()=>{
+ const owner='backfill-owner',cik='0000000044',day=86400000,H={'apca-api-key-id':'fixture-key','apca-api-secret-key':'fixture-secret'};
+ const Y=new Date().getUTCFullYear()-1,acc=cik+'-'+String(Y+1).slice(2)+'-000001',filed=(Y+1)+'-02-15';
+ const dur=val=>({start:Y+'-01-01',end:Y+'-12-31',val,accn:acc,fy:Y,fp:'FY',form:'10-K',filed});
+ // EMCOR-style filing: capex reported only as PaymentsToAcquireProductiveAssets; no debt tag.
+ const us={NetCashProvidedByUsedInOperatingActivities:{units:{USD:[dur(130e6)]}},PaymentsToAcquireProductiveAssets:{units:{USD:[dur(30e6)]}},Revenues:{units:{USD:[dur(900e6)]}}};
+ const dei={EntityCommonStockSharesOutstanding:{units:{shares:[{end:(Y+1)+'-01-31',val:23047714,accn:acc,fy:Y,fp:'FY',form:'10-K',filed}]}}};
+ const serve=()=>{for(const [path,payload] of [['/submissions/CIK'+cik+'.json',{cik:44,name:'Backfill Fixture Inc.',sic:'1731',tickers:['BKF'],exchanges:['Test'],filings:{recent:{accessionNumber:[acc],filingDate:[filed],form:['10-K'],reportDate:[Y+'-12-31'],items:[''],primaryDocument:['r.htm']},files:[]}}],['/api/xbrl/companyfacts/CIK'+cik+'.json',{cik:44,facts:{'us-gaap':us,dei}}]])mock.get('https://data.sec.gov').intercept({path,headers:{'user-agent':'Sentinel Research research@example.test'}}).reply(200,JSON.stringify(payload));};
+ // 1. SEC data not loaded yet: a saved company with no successful SEC read.
+ const now=new Date().toISOString();await db.prepare('INSERT INTO raw_event(id,source,fetched_at,published_at,known_from,content_hash,payload,http_status) VALUES(?,?,?,NULL,?,?,?,200)').bind('bk-raw','fixture',now,now,'bk-raw','{}').run();
+ await db.prepare('INSERT INTO entity(id,cik,name,tickers,exchanges,sic,created_at,raw_event_id) VALUES(?,?,?,?,?,?,?,?)').bind('sec:'+cik,cik,'Backfill Fixture Inc.','["BKF"]','["Test"]','1731',now,'bk-raw').run();
+ await db.prepare('INSERT INTO entity_watch(id,owner,entity_id,known_from) VALUES(?,?,?,?)').bind(crypto.randomUUID(),owner,'sec:'+cik,now).run();
+ const nl=(await req('/implied-expectations?symbol=BKF','GET',undefined,owner)).data;assert.equal(nl.status,'unavailable');assert.equal(nl.missing[0],'SEC data not loaded yet: no successful SEC read is stored for this company.');assert.equal(nl.sources.secRead,'not_loaded');
+ // 2. Load through the normal ingest path; then simulate data stored before the share-count parser by removing the parser marker.
+ serve();const b1=await req('/implied-expectations','POST',{action:'backfill',symbol:'BKF'},owner);assert.equal(b1.status,200,JSON.stringify(b1.data));assert.equal(b1.data.results[0].status,'loaded');assert.equal(b1.data.results[0].shareCountFacts,1);assert.equal(b1.data.parser,'facts-parser-v2');
+ assert.equal((await req('/implied-expectations','POST',{action:'backfill',symbol:'BKF'},owner)).data.processed,0,'already current: nothing re-read');
+ await db.prepare("DELETE FROM source_state WHERE source=?").bind('sentinel:facts-parser:facts-parser-v2:sec:'+cik).run();
+ await db.prepare("INSERT INTO raw_event(id,source,fetched_at,published_at,known_from,content_hash,payload,http_status) VALUES('bk-old','fixture',?,NULL,?,'bk-old','{}',200)").bind(now,now).run();
+ const owner2='backfill-owner-2';await db.prepare('INSERT INTO entity_watch(id,owner,entity_id,known_from) VALUES(?,?,?,?)').bind(crypto.randomUUID(),owner2,'sec:'+cik,now).run();
+ // The share facts exist (stored by the ingest above), so to see "not loaded yet" use a company with no share facts and no marker:
+ const cik2='0000000045';await db.prepare('INSERT INTO entity(id,cik,name,tickers,exchanges,sic,created_at,raw_event_id) VALUES(?,?,?,?,?,?,?,?)').bind('sec:'+cik2,cik2,'Older Read Inc.','["OLDR"]','["Test"]','1731',now,'bk-raw').run();
+ await db.prepare('INSERT INTO entity_watch(id,owner,entity_id,known_from) VALUES(?,?,?,?)').bind(crypto.randomUUID(),owner,'sec:'+cik2,now).run();
+ await db.prepare("INSERT INTO sec_run(id,entity_id,known_from,status,message,raw_event_id) VALUES(?,?,?,'success','fixture: read before facts-parser-v2','bk-old')").bind(crypto.randomUUID(),'sec:'+cik2,now).run();
+ const old=(await req('/implied-expectations?symbol=OLDR','GET',undefined,owner)).data;assert.equal(old.sources.secRead,'loaded');assert.equal(old.canLoadShareCounts,true);assert.match(old.missing[0],/^Share count not loaded yet: this company.s SEC data was stored before Sentinel read cover-page share counts\./);
+ // With the ingest-loaded company: v2 reads EMCOR-style capex, so the result is computed once a price exists.
+ const dates=[];for(let t=Date.now()-300*day;t<Date.now()-day;t+=day){const d=new Date(t);if(d.getUTCDay()%6)dates.push(d.toISOString().slice(0,10));}
+ const seed=async(sym,last)=>{const source='alpaca:iex:daily-bars:'+sym+':'+new Date(Date.now()-400*day).toISOString().slice(0,10)+':'+new Date().toISOString().slice(0,10),id='bk-bars-'+sym+'-'+crypto.randomUUID(),t=new Date().toISOString();
+  await db.prepare('INSERT INTO raw_event(id,source,fetched_at,published_at,known_from,content_hash,payload,http_status) VALUES(?,?,?,NULL,?,?,?,200)').bind(id,source,t,t,id,JSON.stringify({bars:dates.map((d,i)=>({t:d+'T05:00:00Z',c:last*(1+((i*37)%11-5)/1000*0)})),next_page_token:null})).run();
+  await db.prepare('INSERT INTO source_state(source,failures,checked_at,last_good_at,raw_event_id) VALUES(?,0,?,?,?) ON CONFLICT(source) DO UPDATE SET failures=0,last_good_at=excluded.last_good_at,raw_event_id=excluded.raw_event_id,retry_at=NULL,error=NULL').bind(source,t,t,id).run();};
+ await seed('BKF',50);
+ await db.prepare("INSERT INTO source_state(source,failures,checked_at,last_good_at) VALUES(?,0,?,?)").bind('sentinel:facts-parser:facts-parser-v2:sec:'+cik,now,now).run();
+ const ok=(await req('/implied-expectations?symbol=BKF','GET',undefined,owner)).data;assert.equal(ok.status,'computed',JSON.stringify(ok.missing));assert.equal(ok.baseCashFlow.capex,30e6);assert.equal(ok.tagList,undefined);assert.equal(ok.sources.tagList,'xbrl-tags-v2');assert.equal(ok.implied.growthPct,5);
+ assert.equal(ok.notRun.text,'Checks not run: noncontrolling interests, preferred stock, debt (not tagged).');
+ // The company page (xbrl-tags-v1) still shows no capex for this year: existing figures are not changed.
+ const file=await db.prepare("SELECT COUNT(*) n FROM financial_fact WHERE entity_id=? AND metric='capex' AND source_tag='PaymentsToAcquireProductiveAssets'").bind('sec:'+cik).first();assert.equal(file.n,1);
+ // 3. No price, no snapshot: a case for a symbol with no daily bars.
+ const caseAt=new Date(Date.now()-2*day).toISOString(),nocase='discovery-case:no-price';
+ await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_case',?,?)").bind(nocase,owner,caseAt,'sec:'+cik2,JSON.stringify({version:'discovery-case-v2',symbol:'OLDR',createdAt:caseAt,status:'complete',conclusion:'INVESTIGATE',decision:{version:'research-screen-v2'},identity:{cik:cik2,name:'Older Read Inc.'},event:{headline:'Older Read wins contract',publishedAt:caseAt}})).run();
+ mock.get('https://data.alpaca.markets').intercept({path:/^\/v2\/stocks\/OLDR\/bars\?/,headers:H}).reply(200,JSON.stringify({bars:[],next_page_token:null})).persist();
+ const refused=await req('/decision-snapshot','POST',{action:'save',caseId:nocase,requestId:crypto.randomUUID(),checkpoint:'quarterly_revenue_yoy'},owner);
+ assert.equal(refused.status,422);assert.equal(refused.data.error,'Not saved: no price is available for OLDR. A snapshot needs a recorded IEX daily close; nothing was stored.');
+ assert.equal((await db.prepare("SELECT COUNT(*) n FROM signal_log WHERE owner=? AND kind='decision_snapshot'").bind(owner).first()).n,0);
+ // 4. A double click (the same request id twice, as the save guard sends) makes one snapshot.
+ const bcase='discovery-case:bkf';await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_case',?,?)").bind(bcase,owner,caseAt,'sec:'+cik,JSON.stringify({version:'discovery-case-v2',symbol:'BKF',createdAt:caseAt,status:'complete',conclusion:'INVESTIGATE',decision:{version:'research-screen-v2'},identity:{cik,name:'Backfill Fixture Inc.'},event:{headline:'Backfill Fixture wins contract',publishedAt:caseAt}})).run();
+ const rid=crypto.randomUUID(),[s1,s2]=await Promise.all([1,2].map(()=>req('/decision-snapshot','POST',{action:'save',caseId:bcase,requestId:rid,checkpoint:'annual_cash_flow_positive'},owner)));
+ assert.equal(s1.status,200,JSON.stringify(s1.data));assert.equal(s2.status,200);assert.equal(s1.data.id,s2.data.id);assert.equal((await db.prepare("SELECT COUNT(*) n FROM signal_log WHERE owner=? AND kind='decision_snapshot'").bind(owner).first()).n,1);
+ assert.equal(s1.data.snapshot.impliedExpectations.version,'implied-expectations-v2');assert.match(s1.data.snapshot.checkpoint.condition,/annual filing/);
+ const reopened=(await req('/decision-snapshot?id='+encodeURIComponent(s1.data.id),'GET',undefined,owner)).data;assert.equal(reopened.review.business.status,'not_yet');assert.match(reopened.review.business.text,/Waiting for: a 10-K filed after/);
+ // 5. More than 20 companies: the extras are labelled, never valued.
+ const t=new Date().toISOString();for(let k=0;k<21;k++){const sym='H'+String.fromCharCode(65+k)+'X';await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'practice_trade',NULL,?)").bind('bk-trade-'+k,owner,t,JSON.stringify({version:'practice-v2',action:'open',sequence:k+1,positionId:'bk-pos-'+k,symbol:sym,amountCents:1000,quantityMicros:1_000_000,price:{priceCents:1000,at:t,rawEventId:'r',source:'IEX midpoint'},spy:{priceCents:50000,at:t,rawEventId:'r',source:'IEX midpoint'},thesis:'',exitPlan:'',killCondition:'',conviction:50,caseId:null,evidenceScore:null,createdAt:t})).run();}
+ mock.get('https://data.alpaca.markets').intercept({path:/^\/v2\/stocks\/H[A-Z]X\/bars\?/,headers:H}).reply(200,JSON.stringify({bars:[],next_page_token:null})).persist();
+ const cmp=(await req('/decision-compare','POST',{symbol:'BKF'},owner)).data;const over=cmp.start.holdings.filter(h=>h.status==='not priced: over the limit of 20 companies per comparison');
+ assert.equal(over.length,2,'BKF plus 19 holdings are priced; the other 2 are over the limit');assert.ok(over.every(h=>h.valueCents===null));assert.match(cmp.options[0].scenarios[0].reason,/over the limit of 20 companies per comparison/);
+ for(const x of [nl,old,ok,refused.data,cmp])assert.ok(!/\b(undervalued|overvalued|cheap|expensive|upside|target|buy|sell|should)\b/i.test(JSON.stringify(x).replace(/Backfill Fixture[^"]*|Older Read[^"]*/g,'')));
 });
 await test('discovery funnel route: read-only counts from stored records reconcile; the window is validated',async()=>{
  const before=(await db.prepare("SELECT COUNT(*) n FROM signal_log").first()).n;

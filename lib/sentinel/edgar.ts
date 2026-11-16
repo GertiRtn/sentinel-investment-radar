@@ -1,7 +1,14 @@
 import {env} from 'cloudflare:workers';
 import {database,hash,iso} from '@/db/store';
 import {ApiError} from './api';
-import {parseFacts,derive,quarterlyFigures,type FinancialFact} from './financial';
+import {parseFacts,derive,quarterlyFigures,TAG_LIST_V1,type FinancialFact} from './financial';
+/**
+ * What the fact parser reads (2026-11-16): `facts-parser-v2` = cover-page share counts plus every tag in every tag list
+ * (xbrl-tags-v1 and v2). A successful ingest records it per company in source_state, so a reader can tell "SEC data was
+ * stored before this parser" from "the filings do not report it".
+ */
+export const FACTS_PARSER_VERSION='facts-parser-v2';
+export const parserSource=(entityId:string)=>`sentinel:facts-parser:${FACTS_PARSER_VERSION}:${entityId}`;
 const bindings=()=>env as unknown as {DB:D1Database;ARCHIVE:R2Bucket;SEC_CONTACT_EMAIL?:string};
 const wait=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 /** Shared, atomic token bucket, capacity 1 / refill 2 per second: deliberately below SEC's 10/s ceiling. */
@@ -39,18 +46,19 @@ export async function ingest(cik:string,email:string){
  const facts=await secFetch('https://data.sec.gov/api/xbrl/companyfacts/CIK'+cik+'.json',email);if(String(facts.data.cik).padStart(10,'0')!==cik)throw new ApiError(502,'SEC facts identity mismatch');const parsed=parseFacts(facts.data,id,facts.raw.id,at);
  const ops=parsed.map(f=>db.prepare('INSERT OR IGNORE INTO financial_fact(id,entity_id,metric,source_tag,value,unit,period_start,period_end,fiscal_year,fiscal_period,form,known_from,filed,accession,raw_event_id,recorded_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(f.id,id,f.metric,f.source_tag,f.value,f.unit,f.period_start,f.period_end,f.fiscal_year,f.fiscal_period,f.form,f.known_from,f.filed,f.accession,f.raw_event_id,at));for(let i=0;i<ops.length;i+=80)await db.batch(ops.slice(i,i+80));
  // Raw data are complete before a success marker; readers ignore partial failed ingest batches.
+ const parsedAt=iso();await db.prepare('INSERT INTO source_state(source,failures,checked_at,last_good_at,raw_event_id) VALUES(?,0,?,?,?) ON CONFLICT(source) DO UPDATE SET failures=0,checked_at=excluded.checked_at,last_good_at=excluded.last_good_at,raw_event_id=excluded.raw_event_id,retry_at=NULL,error=NULL').bind(parserSource(id),parsedAt,parsedAt,facts.raw.id).run();
  await db.prepare('INSERT INTO sec_run(id,entity_id,known_from,status,message,raw_event_id) VALUES(?,?,?,?,?,?)').bind(crypto.randomUUID(),id,iso(),'success',`${parsed.length} supported observations processed; ${added} new filing records.`,facts.raw.id).run();
  const all=(await db.prepare('SELECT * FROM financial_fact WHERE entity_id=?').bind(id).all<FinancialFact>()).results;
  const derived=derive(all,iso());const cache=[];for(const f of derived){const key=await hash(JSON.stringify([id,f.metric,f.period_end,f.method,f.inputs.map(x=>x.id)]));cache.push(db.prepare('INSERT OR IGNORE INTO derived_metric(id,entity_id,metric,value,unit,period_end,known_from,recorded_at,inputs_json,method,confidence,reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').bind(key,id,f.metric,f.value,f.unit,f.period_end,f.known_from||at,iso(),JSON.stringify(f.inputs.map(x=>x.id)),f.method,f.confidence,f.reason));}for(let i=0;i<cache.length;i+=80)await db.batch(cache.slice(i,i+80));
  return {entity_id:id,newFilings:added,observations:parsed.length};
  }catch(e){await db.prepare('INSERT INTO sec_run(id,entity_id,known_from,status,message) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),id,iso(),'failed',e instanceof Error?e.message:'Ingest failed').run();throw e;}
 }
-export async function companyFile(entityId:string,asOf:string,mode='public',owner=''){
+export async function companyFile(entityId:string,asOf:string,mode='public',owner='',tagList:string=TAG_LIST_V1){
  const db=database(),entity=await db.prepare('SELECT * FROM entity WHERE id=?').bind(entityId).first<any>();if(!entity)throw new ApiError(404,'Company not found');
  const runs=(await db.prepare('SELECT * FROM sec_run WHERE entity_id=? ORDER BY known_from DESC LIMIT 10').bind(entityId).all()).results;const lastGood=runs.find(r=>r.status==='success');
  const records=(await db.prepare("SELECT f.* FROM financial_fact f WHERE entity_id=? AND EXISTS(SELECT 1 FROM sec_run s WHERE s.entity_id=f.entity_id AND s.status='success' AND s.raw_event_id=f.raw_event_id AND (?='public' OR s.known_from<=?))").bind(entityId,mode,asOf).all<FinancialFact>()).results;
- const figures=derive(records,asOf,mode==='recorded'?asOf:undefined);const filings=(await db.prepare("SELECT * FROM filing WHERE entity_id=? AND known_from<=? AND (?='public' OR recorded_at<=?) ORDER BY known_from DESC,accession DESC").bind(entityId,asOf,mode,asOf).all()).results;
+ const figures=derive(records,asOf,mode==='recorded'?asOf:undefined,tagList);const filings=(await db.prepare("SELECT * FROM filing WHERE entity_id=? AND known_from<=? AND (?='public' OR recorded_at<=?) ORDER BY known_from DESC,accession DESC").bind(entityId,asOf,mode,asOf).all()).results;
  const estimates=(await db.prepare('SELECT * FROM maintenance_estimate WHERE entity_id=? AND owner=? AND known_from<=? ORDER BY known_from DESC').bind(entityId,owner,asOf).all()).results;
  for(const f of figures.filter(f=>f.metric==='maintenance_capex')){const e=estimates.find(e=>e.period_end===f.period_end);if(e){f.value=Number(e.value);f.confidence='estimated';f.method=String(e.method);f.known_from=String(e.known_from);f.reason='Human estimate; separate owner-earnings reconciliation still required';}}
- return {entity,figures,quarterlyFigures:quarterlyFigures(records,asOf,mode==='recorded'?asOf:undefined),filings,estimates,asOf,mode,lastGoodAt:lastGood?.known_from||null,stale:!lastGood||Date.now()-Date.parse(String(lastGood.known_from))>86400000||runs[0]?.status==='failed',runs,notice:mode==='recorded'?'Only data captured by Sentinel by the cutoff.':'Reconstructed public filing history, captured later. Filed dates have day precision: values become eligible at the end of that UTC date. Not a record of what Sentinel held then.',coverage:records.length?'us-gaap-supported-tags':'No supported USD US-GAAP facts; IFRS and custom tags are unavailable.'};
+ return {entity,figures,quarterlyFigures:quarterlyFigures(records,asOf,mode==='recorded'?asOf:undefined,tagList),tagList,filings,estimates,asOf,mode,lastGoodAt:lastGood?.known_from||null,stale:!lastGood||Date.now()-Date.parse(String(lastGood.known_from))>86400000||runs[0]?.status==='failed',runs,notice:mode==='recorded'?'Only data captured by Sentinel by the cutoff.':'Reconstructed public filing history, captured later. Filed dates have day precision: values become eligible at the end of that UTC date. Not a record of what Sentinel held then.',coverage:records.length?'us-gaap-supported-tags':'No supported USD US-GAAP facts; IFRS and custom tags are unavailable.'};
 }

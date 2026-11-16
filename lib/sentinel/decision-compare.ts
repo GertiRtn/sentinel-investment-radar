@@ -29,7 +29,7 @@ export function betaFromCloses(stock: Map<string, number> | null | undefined, sp
   return fit ? { beta: fit.beta, r2: fit.r2, days: n, from: used[used.length - n], to: used[used.length - 1] } : null;
 }
 
-export type Holding = { symbol: string; valueCents: number | null };
+export type Holding = { symbol: string; valueCents: number | null; reason?: string }; // reason: why a holding has no value (shown, never guessed)
 export type Mandate = { reservePct: number; maxPositionPct: number } | null;
 export type CompareInput = { symbol: string; budgetCents: number; cashCents: number; holdings: Holding[]; betas: Record<string, Beta | null | undefined>; mandate?: Mandate };
 const fee = (cents: number) => Math.ceil(cents * COMPARE_POLICY.costBpsPerSide / 10_000);
@@ -39,6 +39,7 @@ export function compareDecision(i: CompareInput) {
   if (!Number.isSafeInteger(i.cashCents) || i.cashCents < 0) throw new Error('Invalid cash.');
   const merged = new Map<string, number | null>();
   for (const h of i.holdings) { const p = merged.get(h.symbol); merged.set(h.symbol, merged.has(h.symbol) ? (p === null || h.valueCents === null ? null : p! + h.valueCents) : h.valueCents); }
+  const reasons = new Map(i.holdings.filter(h => h.valueCents === null && h.reason).map(h => [h.symbol, h.reason!]));
   const unpriced = [...merged.entries()].filter(([, v]) => v === null).map(([s]) => s);
   const before = unpriced.length ? null : i.cashCents + [...merged.values()].reduce((s: number, v) => s + (v as number), 0);
 
@@ -52,7 +53,7 @@ export function compareDecision(i: CompareInput) {
     const stockValue = pos.get(i.symbol) ?? 0;
     const weight = total === null || pos.get(i.symbol) === null ? null : total > 0 ? stockValue / total * 100 : 0;
     const noBeta = [...pos.keys()].filter(s => s !== 'SPY' && !i.betas[s]);
-    const why = unpriced.length ? `No current price for ${unpriced.join(', ')}.` : noBeta.length ? `Not enough price history to measure a beta for ${noBeta.join(', ')} (at least ${COMPARE_POLICY.betaMinDays} matched days are needed).` : null;
+    const why = unpriced.length ? `No current price for ${unpriced.map(s => (reasons.has(s) ? `${s} (${reasons.get(s)})` : s)).join(', ')}.` : noBeta.length ? `Not enough price history to measure a beta for ${noBeta.join(', ')} (at least ${COMPARE_POLICY.betaMinDays} matched days are needed).` : null;
     const scenarios = COMPARE_POLICY.spyMoves.map(m => {
       if (why) return { spyMove: m, status: 'unavailable' as const, reason: why };
       const value = cash + [...pos.entries()].reduce((s, [sym, v]) => s + Math.round(v! * (1 + (sym === 'SPY' ? 1 : i.betas[sym]!.beta) * m)), 0);
@@ -68,7 +69,7 @@ export function compareDecision(i: CompareInput) {
 
   return {
     version: COMPARE_VERSION, symbol: i.symbol, budgetCents: i.budgetCents,
-    start: { cashCents: i.cashCents, holdings: [...merged.entries()].map(([symbol, valueCents]) => ({ symbol, valueCents })), totalCents: before },
+    start: { cashCents: i.cashCents, holdings: [...merged.entries()].map(([symbol, valueCents]) => ({ symbol, valueCents, ...(valueCents === null ? { status: reasons.get(symbol) ?? 'not priced' } : {}) })), totalCents: before },
     options: [option('keep', 'Keep the portfolio', null), option('stock', `Add ${i.symbol}`, i.symbol), option('spy', 'Add SPY', 'SPY')],
     betas: Object.fromEntries([...new Set([...merged.keys(), i.symbol])].filter(s => s !== 'SPY').map(s => [s, i.betas[s] ?? null])),
     scenarioLabel: SCENARIO_LABEL, scenarioMethod: 'Each holding moves by its measured beta × the SPY move; SPY moves by the SPY move; cash is unchanged. The same three SPY moves are applied to every option.',

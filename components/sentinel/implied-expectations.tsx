@@ -8,19 +8,29 @@ const usd = (v: number | null | undefined) => (typeof v !== "number" ? "unavaila
 const pct = (g: number | null | undefined, digits = 1) => (typeof g === "number" ? `${g >= 0 ? "+" : ""}${(g * 100).toFixed(digits)}%` : "—");
 
 export function ImpliedExpectationsPanel({ symbol }: { symbol: string }) {
-  const [r, setR] = useState<any>(undefined), [error, setError] = useState("");
-  useEffect(() => { setR(undefined); setError(""); fetch(`/api/implied-expectations?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" }).then(async x => { const j: any = await x.json(); if (!x.ok) throw new Error(j.error || "Could not load."); setR(j); }).catch(e => { setR(null); setError(e.message); }); }, [symbol]);
+  const [r, setR] = useState<any>(undefined), [error, setError] = useState(""), [loading, setLoading] = useState(""), [tick, setTick] = useState(0);
+  useEffect(() => { setR(undefined); setError(""); fetch(`/api/implied-expectations?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" }).then(async x => { const j: any = await x.json(); if (!x.ok) throw new Error(j.error || "Could not load."); setR(j); }).catch(e => { setR(null); setError(e.message); }); }, [symbol, tick]);
+  async function loadShares() {
+    setLoading("Loading SEC data…");
+    try { const x = await fetch("/api/implied-expectations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "backfill", symbol }) }); const j: any = await x.json(); if (!x.ok) throw new Error(j.error || "SEC data could not be loaded.");
+      const failed = j.results.filter((q: any) => q.status === "failed"); setLoading(failed.length ? failed.map((q: any) => `${q.company}: ${q.message}`).join(" ") : `Loaded ${j.processed} compan${j.processed === 1 ? "y" : "ies"}${j.remaining ? `; ${j.remaining} more to load` : ""}.`); setTick(t => t + 1); }
+    catch (e: any) { setLoading(e.message); }
+  }
   return (
     <section aria-label="What the price assumes" className="rounded-3xl border border-border bg-card/60 p-6 text-[13px]">
       <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">What the price assumes</h2><span className="rounded-md bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">Illustrative assumptions</span></div>
       {r === undefined ? <p className="text-muted-foreground">Loading…</p> : !r ? <p className="text-muted-foreground">Unavailable: {error || "could not load"}</p> : <>
         {r.status === "unavailable" ? <>
           <p className="text-base font-semibold">Unavailable</p>
+          {r.notRun?.text && <p className="mt-1 text-xs text-amber-200">{r.notRun.text}</p>}
           <p className="mt-1 text-muted-foreground">The calculation needs every input below. Nothing is estimated in its place.</p>
           <ul className="mt-2 list-disc space-y-1 pl-4">{r.missing.map((m: string) => <li key={m}>{m}</li>)}</ul>
+          {(r.canLoadShareCounts || r.sec?.state === "not_loaded" || r.sec?.state === "failed") && <button type="button" onClick={loadShares} disabled={loading === "Loading SEC data…"} className="mt-3 min-h-11 w-full rounded-xl border border-border text-sm hover:bg-muted disabled:opacity-50">{r.sec?.state === "failed" ? "Try the SEC read again" : "Load share counts"}</button>}
+          {loading && <p className="mt-1 text-xs text-muted-foreground" role="status">{loading}</p>}
         </> : <>
           {r.implied.status === "solved" ? <><p className="text-3xl font-semibold tabular-nums">{pct(r.implied.growth)} <span className="text-sm font-normal text-muted-foreground">implied growth a year, {r.assumptions.years} years</span></p><p className="mt-2">{r.implied.text}</p></>
             : <><p className="text-base font-semibold">Outside range</p><p className="mt-1">{r.implied.text}</p></>}
+          {r.notRun?.text && <p className="mt-2 text-xs text-amber-200">{r.notRun.text} <span className="text-muted-foreground">See basis and caveats below.</span></p>}
           <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
             <dt className="text-muted-foreground">Market value</dt><dd>{usd(r.marketValue.value)} = ${r.marketValue.price.value.toFixed(2)} × {r.marketValue.shares.value.toLocaleString("en-US")} shares</dd>
             <dt className="text-muted-foreground">Price</dt><dd>{r.marketValue.price.source}{r.marketValue.price.ageDays ? ` · ${r.marketValue.price.ageDays} days old` : ""}</dd>

@@ -4,20 +4,24 @@
 // (as the company page does) and two append-only record kinds, `decision_snapshot` and `decision_review`.
 import {env} from 'cloudflare:workers';
 import {database,hash,iso} from '@/db/store';
-import {companyFile} from './edgar';
+import {companyFile,ingest,parserSource,FACTS_PARSER_VERSION} from './edgar';
 import {archivedDailyBars} from './daily-bars';
 import {closesOf} from './market-model';
 import {closeFromBars} from './last-close';
 import {closeInstant} from './case-context';
-import {latestShareCount,type FinancialFact,type Figure} from './financial';
+import {latestShareCount,TAG_LIST_V2,type FinancialFact,type Figure} from './financial';
 import {practiceState,type PracticeTrade} from './practice';
 import {AUTO_POLICY} from './auto-practice';
-import {impliedExpectations,type PriceInput} from './implied-expectations';
+import {impliedExpectations,type PriceInput,type SecState} from './implied-expectations';
 import {compareDecision,betaFromCloses,type Beta} from './decision-compare';
 import {SNAPSHOT_VERSION,checkpointFor,reviewSnapshot,performance,evaluateCheckpoint,compareShownToSaved,type CheckpointId} from './decision-snapshot';
 
 const SYMBOL=/^[A-Z][A-Z0-9.\-]{0,9}$/,DAY=86400000;
 export const DEFAULT_BUDGET_CENTS=AUTO_POLICY.positionCents; // the standard position the idea card uses
+/** Price requests per comparison (the candidate plus holdings, plus SPY). Holdings beyond it are shown as not priced, never valued. */
+export const MAX_PRICED_SYMBOLS=20;
+export const NO_PRICE=(symbol:string)=>`Not saved: no price is available for ${symbol}. A snapshot needs a recorded IEX daily close; nothing was stored.`;
+export const OVER_LIMIT=`not priced: over the limit of ${MAX_PRICED_SYMBOLS} companies per comparison`;
 const creds=()=>{const c=env as unknown as {ALPACA_DATA_KEY_ID?:string;ALPACA_DATA_SECRET?:string};return c.ALPACA_DATA_KEY_ID&&c.ALPACA_DATA_SECRET?c as {ALPACA_DATA_KEY_ID:string;ALPACA_DATA_SECRET:string}:null;};
 const ymd=(t:number)=>new Date(t).toISOString().slice(0,10);
 
@@ -38,12 +42,44 @@ export async function companyFor(owner:string,symbol:string){
  if(row?.cik&&/^\d{10}$/.test(String(row.cik)))return db.prepare('SELECT id,cik,name,sic FROM entity WHERE id=?').bind('sec:'+row.cik).first<{id:string;cik:string;name:string;sic:string|null}>();
  return db.prepare("SELECT e.id,e.cik,e.name,e.sic FROM entity e JOIN entity_watch w ON w.entity_id=e.id WHERE w.owner=? AND EXISTS(SELECT 1 FROM json_each(e.tickers) WHERE upper(value)=?) LIMIT 1").bind(owner,symbol).first<{id:string;cik:string;name:string;sic:string|null}>();
 }
-async function secFor(owner:string,entityId:string,asOf:string){
+/**
+ * The company's SEC figures for the decision workflow, read with tag list xbrl-tags-v2. Three outcomes, never merged:
+ * `not_loaded` (no successful SEC read stored), `failed` (the read threw; the message is kept, never swallowed as null)
+ * and `loaded` (with whether the last read used the current fact parser).
+ */
+export type SecRead={state:'loaded';annual:Figure[];quarterly:Figure[];shareFact:FinancialFact|null;lastGoodAt:string|null;parserCurrent:boolean;tagList:string}|{state:'not_loaded'}|{state:'failed';error:string};
+export async function secFor(owner:string,entityId:string,asOf:string):Promise<SecRead>{
+ const db=database();
  try{
-  const file=await companyFile(entityId,asOf,'public',owner);
-  const shares=(await database().prepare("SELECT f.* FROM financial_fact f WHERE entity_id=? AND metric IN ('shares_outstanding','shares_outstanding_multiclass') AND known_from<=? AND EXISTS(SELECT 1 FROM sec_run s WHERE s.entity_id=f.entity_id AND s.status='success' AND s.raw_event_id=f.raw_event_id)").bind(entityId,asOf).all<FinancialFact>()).results;
-  return {annual:file.figures as Figure[],quarterly:file.quarterlyFigures as Figure[],shareFact:latestShareCount(shares,asOf),lastGoodAt:file.lastGoodAt?String(file.lastGoodAt):null};
- }catch{return null}
+  const ok=await db.prepare("SELECT 1 x FROM sec_run WHERE entity_id=? AND status='success' LIMIT 1").bind(entityId).first();
+  if(!ok)return {state:'not_loaded'};
+  const file=await companyFile(entityId,asOf,'public',owner,TAG_LIST_V2);
+  const shares=(await db.prepare("SELECT f.* FROM financial_fact f WHERE entity_id=? AND metric IN ('shares_outstanding','shares_outstanding_multiclass') AND known_from<=? AND EXISTS(SELECT 1 FROM sec_run s WHERE s.entity_id=f.entity_id AND s.status='success' AND s.raw_event_id=f.raw_event_id)").bind(entityId,asOf).all<FinancialFact>()).results;
+  const marker=await db.prepare('SELECT last_good_at FROM source_state WHERE source=?').bind(parserSource(entityId)).first<{last_good_at:string|null}>();
+  return {state:'loaded',annual:file.figures as Figure[],quarterly:file.quarterlyFigures as Figure[],shareFact:latestShareCount(shares,asOf),lastGoodAt:file.lastGoodAt?String(file.lastGoodAt):null,parserCurrent:!!marker?.last_good_at,tagList:TAG_LIST_V2};
+ }catch(e){return {state:'failed',error:(e instanceof Error?e.message:'The SEC records could not be read.').slice(0,200)};}
+}
+const secState=(r:SecRead):SecState=>r.state==='loaded'?{state:'loaded',parserCurrent:r.parserCurrent,tagList:r.tagList}:r;
+const loaded=(r:SecRead|null)=>r&&r.state==='loaded'?r:null;
+
+/**
+ * Re-read SEC data with the current fact parser (cover-page share counts, xbrl-tags-v2) through the normal ingest path,
+ * for the owner's saved companies (and the requested company first, if given) whose last read predates the parser.
+ * At most `limit` companies per request; ingest appends facts only (INSERT OR IGNORE), so existing facts are untouched.
+ */
+export async function backfillShareCounts(owner:string,email:string,opts:{symbol?:string;limit?:number}={}){
+ const db=database(),limit=Math.min(Math.max(opts.limit??3,1),5),first=opts.symbol?await companyFor(owner,opts.symbol):null;
+ const watched=(await db.prepare('SELECT e.id,e.cik,e.name FROM entity_watch w JOIN entity e ON e.id=w.entity_id WHERE w.owner=? ORDER BY w.known_from,e.id').bind(owner).all<{id:string;cik:string;name:string}>()).results;
+ const list=[...(first?[first]:[]),...watched.filter(w=>w.id!==first?.id)];
+ const due:typeof list=[];for(const e of list){if(!(await db.prepare('SELECT last_good_at FROM source_state WHERE source=?').bind(parserSource(e.id)).first<{last_good_at:string|null}>())?.last_good_at)due.push(e);}
+ const results:any[]=[];
+ for(const e of due.slice(0,limit)){
+  try{const r=await ingest(e.cik,email);const n=(await db.prepare("SELECT COUNT(*) n FROM financial_fact WHERE entity_id=? AND metric IN ('shares_outstanding','shares_outstanding_multiclass')").bind(e.id).first<{n:number}>())?.n??0;
+   results.push({company:e.name,cik:e.cik,status:'loaded',shareCountFacts:n,observations:r.observations});}
+  catch(err){results.push({company:e.name,cik:e.cik,status:'failed',message:'SEC read failed: '+(err instanceof Error?err.message:'unknown error')});}
+ }
+ return {parser:FACTS_PARSER_VERSION,checked:list.length,due:due.length,processed:results.length,remaining:Math.max(0,due.length-results.length),results,
+  note:`Up to ${limit} companies per request through the normal SEC ingest. Facts are appended; nothing stored is changed.`};
 }
 
 /** What the price assumes, for one ticker, as of now. Read-only apart from the price archive. */
@@ -51,8 +87,8 @@ export async function impliedFor(owner:string,symbol:string,now=iso()){
  const entity=await companyFor(owner,symbol);if(!entity)return null;
  const sec=await secFor(owner,entity.id,now),b=await dailyBars(symbol,now,400);
  const price:PriceInput='error' in b||!b.last?null:{value:b.last.close,at:b.last.closeAt,basis:'last_close',source:'IEX daily close '+b.last.sessionDate+' (one US exchange)',rawEventId:b.last.rawEventId};
- const r=impliedExpectations({symbol,asOf:now,sic:entity.sic??null,figures:sec?.annual??[],shareFact:sec?.shareFact??null,price});
- return {...r,company:{name:entity.name,cik:entity.cik,sic:entity.sic??null},sources:{secLastGoodAt:sec?.lastGoodAt??null,secRead:!!sec,priceError:'error' in b?b.error:b.last?null:'No completed IEX daily close in the last 5 days.',priceSessionDate:'error' in b?null:b.last?.sessionDate??null}};
+ const ok=loaded(sec),r=impliedExpectations({symbol,asOf:now,sic:entity.sic??null,figures:ok?.annual??[],shareFact:ok?.shareFact??null,price,sec:secState(sec)});
+ return {...r,company:{name:entity.name,cik:entity.cik,sic:entity.sic??null},sources:{secLastGoodAt:ok?.lastGoodAt??null,secRead:sec.state,secError:sec.state==='failed'?sec.error:null,tagList:ok?.tagList??null,priceError:'error' in b?b.error:b.last?null:'No completed IEX daily close in the last 5 days.',priceSessionDate:'error' in b?null:b.last?.sessionDate??null}};
 }
 
 async function practiceOpen(owner:string,now:string){
@@ -63,14 +99,13 @@ async function practiceOpen(owner:string,now:string){
 
 /** Keep / add the stock / add SPY from the same Practice state. Holdings are valued at the last completed IEX close. Read-only. */
 export async function compareFor(owner:string,symbol:string,budgetCents:number,now=iso()){
- const p=await practiceOpen(owner,now),symbols=[...new Set([symbol,...p.open.map(o=>o.symbol)])].slice(0,8);
+ const p=await practiceOpen(owner,now),all=[...new Set([symbol,...p.open.map(o=>o.symbol)])],symbols=all.slice(0,MAX_PRICED_SYMBOLS),over=new Set(all.slice(MAX_PRICED_SYMBOLS));
  const got=await Promise.all([...symbols,'SPY'].map(s=>dailyBars(s,now,400))),bars=new Map([...symbols,'SPY'].map((s,i)=>[s,got[i]]));
  const spy=bars.get('SPY')!,betas:Record<string,Beta|null>={},problems:string[]=[],marks:Record<string,{close:number;sessionDate:string;rawEventId:string}|null>={};
  if('error' in spy)problems.push('SPY: '+spy.error);
  for(const s of symbols){const b=bars.get(s)!;if('error' in b){problems.push(s+': '+b.error);betas[s]=null;marks[s]=null;continue;}
   betas[s]='error' in spy?null:betaFromCloses(b.closes,spy.closes);marks[s]=b.last?{close:b.last.close,sessionDate:b.last.sessionDate,rawEventId:b.last.rawEventId}:null;}
- const holdings=p.open.map(o=>({symbol:o.symbol,valueCents:marks[o.symbol]?Math.round(o.quantityMicros*marks[o.symbol]!.close*100/1_000_000):null}));
- for(const o of p.open.slice(8))holdings.push({symbol:o.symbol,valueCents:null});
+ const holdings=p.open.map(o=>over.has(o.symbol)?{symbol:o.symbol,valueCents:null,reason:OVER_LIMIT}:marks[o.symbol]?{symbol:o.symbol,valueCents:Math.round(o.quantityMicros*marks[o.symbol]!.close*100/1_000_000)}:{symbol:o.symbol,valueCents:null,reason:'not priced: no completed IEX close in the last 5 days'});
  const mandateRow=await database().prepare("SELECT body FROM signal_log WHERE owner=? AND kind='practice_mandate' ORDER BY created_at DESC,id DESC LIMIT 1").bind(owner).first<{body:string}>();
  let mandate=null;try{const m=mandateRow?JSON.parse(mandateRow.body):null;if(m&&Number.isFinite(m.reservePct)&&Number.isFinite(m.maxPositionPct))mandate={reservePct:m.reservePct,maxPositionPct:m.maxPositionPct};}catch{}
  const r=compareDecision({symbol,budgetCents,cashCents:p.cashCents,holdings,betas,mandate});
@@ -98,9 +133,10 @@ export async function saveSnapshot(owner:string,input:{caseId:string;requestId:s
  const cb=JSON.parse(kase.body),symbol=String(cb.symbol??''),now=iso();
  if(!SYMBOL.test(symbol))return {error:'The case has no usable ticker.'} as const;
  const implied=await impliedFor(owner,symbol,now),compare=await compareFor(owner,symbol,input.budgetCents,now);
- const entity=await companyFor(owner,symbol),sec=entity?await secFor(owner,entity.id,now):null;
+ const entity=await companyFor(owner,symbol),sec=entity?loaded(await secFor(owner,entity.id,now)):null;
  const ic=await db.prepare("SELECT id FROM signal_log WHERE owner=? AND kind='investment_case' AND json_extract(body,'$.caseId')=? ORDER BY created_at DESC,id DESC LIMIT 1").bind(owner,input.caseId).first<{id:string}>();
  const mark=compare.marks[symbol];
+ if(!mark)return {error:NO_PRICE(symbol)} as const;
  const body={version:SNAPSHOT_VERSION,id,caseId:input.caseId,symbol,savedAt:now,budgetCents:input.budgetCents,
   price:mark?{value:mark.close,sessionDate:mark.sessionDate,basis:'last_close',source:'IEX daily close (one US exchange)',rawEventId:mark.rawEventId}:{value:null,sessionDate:null,basis:'unavailable',source:null,rawEventId:null},
   spy:compare.spyReference,
@@ -117,10 +153,10 @@ export async function saveSnapshot(owner:string,input:{caseId:string;requestId:s
 }
 
 async function computeReview(owner:string,s:any,now:string){
- const entity=await companyFor(owner,s.symbol),sec=entity?await secFor(owner,entity.id,now):null;
+ const entity=await companyFor(owner,s.symbol),read=entity?await secFor(owner,entity.id,now):null,sec=loaded(read);
  const days=Math.ceil((Date.parse(now)-Date.parse(s.savedAt))/DAY)+15;
  const [st,sp]=await Promise.all([dailyBars(s.symbol,now,days),dailyBars('SPY',now,days)]);
- return reviewSnapshot({snapshot:s,now,annual:sec?.annual??null,quarterly:sec?.quarterly??null,stock:'error' in st?null:record(st.closes),spy:'error' in sp?null:record(sp.closes)});
+ return reviewSnapshot({snapshot:s,now,secError:read&&read.state!=='loaded'?(read.state==='failed'?'SEC read failed: '+read.error:'SEC data not loaded yet.'):null,annual:sec?.annual??null,quarterly:sec?.quarterly??null,stock:'error' in st?null:record(st.closes),spy:'error' in sp?null:record(sp.closes)});
 }
 const reviewsOf=async(owner:string,id:string)=>(await database().prepare("SELECT id,created_at,body FROM signal_log WHERE owner=? AND kind='decision_review' AND json_extract(body,'$.snapshotId')=? ORDER BY created_at,id").bind(owner,id).all<Row>()).results.map(r=>({id:r.id,recordedAt:r.created_at,...JSON.parse(r.body)}));
 
@@ -157,11 +193,11 @@ export async function replayDecisions(owner:string,maxSymbols=10,budgetMs=20000)
  const out:any[]=[];let symbolsDone=0;
  for(const [symbol,list] of bySymbol){
   if(symbolsDone>=maxSymbols||Date.now()-t0>budgetMs)break;symbolsDone++;
-  const b=await dailyBars(symbol,now,days),cik=list.find(r=>/^\d{10}$/.test(String(r.cik??'')))?.cik??null,sec=cik?await secFor(owner,'sec:'+cik,now):null;
+  const b=await dailyBars(symbol,now,days),cik=list.find(r=>/^\d{10}$/.test(String(r.cik??'')))?.cik??null,read=cik?await secFor(owner,'sec:'+cik,now):null,sec=loaded(read);
   for(const k of list){
    const entry='error' in b?null:[...b.closes.keys()].filter(d=>closeInstant(d)<=k.created_at).sort().at(-1)??null;
    const perf=performance(entry,DEFAULT_BUDGET_CENTS,'error' in b?null:record(b.closes),'error' in spy?null:record(spy.closes));
-   const thesis=sec?evaluateCheckpoint(checkpointFor('quarterly_revenue_yoy',k.created_at,sec.annual,sec.quarterly),k.created_at,now,sec.annual,sec.quarterly):{status:'unavailable' as const,text:'Unavailable: no SEC figures stored for this company.'};
+   const thesis=sec?evaluateCheckpoint(checkpointFor('quarterly_revenue_yoy',k.created_at,sec.annual,sec.quarterly),k.created_at,now,sec.annual,sec.quarterly):{status:'unavailable' as const,text:read?.state==='failed'?'Unavailable: SEC read failed: '+read.error:'Unavailable: SEC data not loaded yet for this company.'};
    out.push({caseId:k.id,symbol,decisionAt:k.created_at,business:thesis,investment:perf.investment,alternatives:perf.alternatives});
   }
  }
