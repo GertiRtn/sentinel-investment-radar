@@ -5,6 +5,8 @@ import { CartesianGrid, ComposedChart, Line, LineChart, Bar, ReferenceDot, Refer
 import { WhatChanged } from "./what-changed";
 import { ResearchTeamPanel } from "./research-team-panel";
 import { InvestmentCasePanel } from "./investment-case";
+import { ImpliedExpectationsPanel } from "./implied-expectations";
+import { DecisionComparePanel } from "./decision-compare";
 
 /* Company page (company-page-v1). Real data only: every value comes from /api/company-page with its period and
    source; missing values show "Unknown" with a reason. Green/red only for price direction, always with ▲/▼. */
@@ -195,6 +197,8 @@ export function CompanyPageView({ symbol }: { symbol: string }) {
         <aside className="min-w-0 space-y-6">
           <Assessment a={d.assessment} note={d.assessmentNote} dv={d.directionalView} onOpen={setOpen} />
           {d.assessment?.caseId && <InvestmentCasePanel caseId={d.assessment.caseId} />}
+          <ImpliedExpectationsPanel symbol={symbol} />
+          <DecisionComparePanel symbol={symbol} caseId={d.assessment?.caseId ?? null} />
           <Events events={d.events} onOpen={setOpen} />
           <section aria-label="Your positions" className="px-1">
             <h2 className="mb-3 text-sm font-semibold">Your virtual positions</h2>
