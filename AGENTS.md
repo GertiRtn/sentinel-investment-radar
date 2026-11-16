@@ -32,7 +32,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
-## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 248/248 on 2026-11-15)
+## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 263/263 on 2026-11-16 on branch `decision-workflow`; `main` alone is 248)
 
 - Server-side persistence on Cloudflare D1, raw captures in D1/R2 with SHA-256 dedup.
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
@@ -102,6 +102,19 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 - It proves nothing until enough trades close (`MIN_CLOSED_FOR_RECORD` = 20) and it is compared with the outcomes of all assessed cases.
 
 ---
+
+## Decision workflow (on demand — added 2026-11-16)
+
+Founder decision: four separate questions per case, never one threshold or one combined score. (1) Business quality: investment case and evidence score, unchanged. (2) Market expectations: what the price assumes. (3) Investment opportunity: shown beside (2), always "not established" today. (4) Portfolio suitability: what acting would change. **Banned wording in this workflow:** undervalued, overvalued, cheap, expensive, upside, target, buy, sell, should (tests enforce it on every output).
+
+- **Share count (3A):** `parseShareCounts` in `financial.ts` reads `dei:EntityCommonStockSharesOutstanding` as metric `shares_outstanding` (instant fact: `period_end` = cover-page date, `known_from` = filing date). Several values in one filing or on one date are never summed: one marker fact `shares_outstanding_multiclass` instead. Not in `TAGS`, so `derive` and `investment-case-v1` are unchanged. Existing companies get the facts at their next ingest.
+- **What the price assumes (3B):** `lib/sentinel/implied-expectations.ts` (pure, `implied-expectations-v1`), `GET /api/implied-expectations?symbol=`, `components/sentinel/implied-expectations.tsx` on the company page. Equity basis only: price × cover-page shares against reported CFO − capex (same validity checks and `DCF_ASSUMPTIONS` as `cashflow-scenarios.ts`: 12%, 2%, 5 years). Bisection for the constant 5-year growth within −30%…+40%, else "outside range". 3×3 sensitivity. Reported history beside it. Net debt is context only. Unavailable with the exact reason for: financial company (SIC 6000–6799), base cash flow ≤ 0 or unmatched or older than 550 days, missing or multi-class share count, price missing or older than 5 days, debt above 4× operating cash flow. Untagged debt, noncontrolling interests and preferred stock are "not checked", never clear. Price = last completed IEX daily close.
+- **Three-way comparison (3C):** `lib/sentinel/decision-compare.ts` (pure, `decision-compare-v1`), `POST /api/decision-compare`. Keep / add the stock / add SPY from the same Practice state (holdings valued at the last completed IEX close) and budget (default $1,000): cash, 15 bp entry and exit costs, stock weight, and the portfolio under SPY −10% / 0 / +10% through each holding's measured beta (≥120 matched days, else unavailable; never assumed). Optional `practice_mandate` record is read if present; none exists yet ("no mandate set"). ES95 not computed.
+- **Snapshot and review (3D):** `lib/sentinel/decision-snapshot.ts` (pure), runner `decision-run.ts`, `GET/POST /api/decision-snapshot`, `components/sentinel/decision-compare.tsx`. Append-only `decision_snapshot` (id from owner + case + request id; stored once) with price, implied expectations, Practice state, the three options, the SPY reference and one checkpoint from fixed templates. Reopening returns the stored text unchanged plus a review computed now. Reviews are separate `decision_review` records (one per UTC day) with three results that are never merged: business expectation, investment performance net of costs, and against SPY and keeping the portfolio. `GET ?view=replay` replays stored cases (up to 10 symbols per request).
+- **Funnel counts (3F):** `lib/sentinel/discovery-funnel.ts` (pure, `discovery-funnel-v1`), `GET /api/discovery-funnel?hours=24|96|168`, a fold on Discover that loads only when opened. Read-only; the collector, queue and batch are untouched. Unit = (report, symbol) pair, definitions as `discoveryQueue()`. "Deduplicated" is not recorded. Reconciliation checks are returned and any difference is displayed.
+- **Never** part of the hourly run; never reads or writes the screen, score, rankings, alerts, Practice trades or either experiment.
+- **Known gap found on real filings (2026-11-16):** `TAGS.capex` holds only `PaymentsToAcquirePropertyPlantAndEquipment`. EMCOR reports `PaymentsToAcquireProductiveAssets`, so its result is "unavailable: no matching capital expenditure" until the tag list is widened. Widening it changes existing figures (company page, cases, investment case inputs), so it needs its own versioned change with the debt-tag work.
+- Offline research only: `scripts/research/` (`implied-offline.mjs`, `harness.mjs`). Specs: `docs/specs/prediction-feasibility-2026-11-16.md`, `docs/specs/architecture-handoff-2026-11-16.md`.
 
 ## Shadow reader (evaluation only — added 2026-11-12)
 

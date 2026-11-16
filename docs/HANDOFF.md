@@ -644,3 +644,37 @@ It did not have #36 (company page polish) or #37 (investment case).
 **Expected on the live data:** EME ("To Acquire …") is good news and stays a rule-meeting idea. SIEB, GOAI and ROLR ("Reports Third Quarter … Results") are neutral unless their provider summaries say otherwise, so they can at most be "closest".
 
 **Limits:** word lists misread some headlines ("shares fall despite earnings beat" reads as mixed). The label describes the wording, not the future. Review the labels on the live Site and refine the lists as a new version.
+
+## 2026-11-16 — Claude Code (Fable): decision workflow (founder brief "decision workflow, option A+")
+
+**Baseline:** main 251c40a (248/248). Branch `decision-workflow`. Not merged, not published. `claude/sentinel-investment-case-dev-b98dgz` (auto-practice-v2, PR #41) was not merged or touched; this branch does not edit `investment-case-run.ts` or `pipeline.ts`. Both branches append to AGENTS.md and this file, so the second to merge needs an append-only resolution.
+
+**Preflight:** the Site could not be reached from the sandbox (no URL, no signed-in session), so **the Site's tree was not compared with 251c40a**. Do that before any publish. SEC and Alpaca were blocked at first; the founder approved a session environment that allows `data.sec.gov` and `www.sec.gov`. Alpaca stayed unreachable (no key), so no real price was fetched.
+
+**Built (details in AGENTS.md, "Decision workflow"):** 3A cover-page share count · 3B what the price assumes · 3C keep / add the stock / add SPY · 3D snapshot, reopen unchanged, three-part review, replay · 3F discovery funnel counts. No migration (new record kinds `decision_snapshot`, `decision_review`; new fact metrics). Click path: Discover → a case → Company page → "What the price assumes" → "What acting would change" → Compare → Save snapshot → Reopen → Record this review.
+
+**Verified:** 263/263 (`node --test tests/*.test.mjs`): 248 before + 10 pure (`tests/decision-workflow.test.mjs`) + 3 harness (`tests/research-harness.test.mjs`) + 2 Miniflare route tests in `tests/work-order03.test.mjs` (the whole path with a mocked SEC payload and seeded bars: implied growth 5.00% from the hand calculation, three options checked by hand, snapshot byte-identical on reopen, review appended once per day, snapshot immutable, owner isolation, nothing else written; funnel route reconciles). `tsc` clean, build OK.
+
+**Real filings (offline, `scripts/research/implied-offline.mjs`, SEC companyfacts fetched 2026-11-16):**
+- *EMCOR (EME), complete only offline.* Share count parsed: 43,782,004 (cover date 2026-10-23, 10-Q filed 2026-10-29). With the app's tag list the result is **unavailable**: EMCOR reports capex as `PaymentsToAcquireProductiveAssets`, which `TAGS.capex` does not hold. Reading that tag offline, and typing the $659.47 close of 13 Nov noted in this file (not a recorded quote): market value $28.87B; base cash flow $1,189.3M (CFO $1,302.1M − capex $112.8M, FY2025); the price assumes about **24.5% a year for 5 years** at 12% / 2% (sensitivity 15.2% to 32.2%). Reported history of the same cash flow: $283M, $449M, $821M, $1,333M, $1,189M (+59%, +83%, +62%, −11%). Leverage: not checked (no supported debt tag). An illustration of the mechanics, not a result the Site would show today.
+- *Diamondback (FANG), incomplete.* Missing: a price (none reachable here) and base cash flow: its capital spending is tagged `PaymentsToAcquireOilAndGasProperty`, which mixes drilling with acquisitions and is not a supported capex tag. Share count parsed (279,167,841, cover date 2026-10-30). Debt $14.49B against operating cash flow $8.76B is 1.7×, inside the 4× limit.
+
+**Funnel counts on real data:** not produced (needs the Site's database). The fixture and the route test reconcile; on the Site open the fold on Discover.
+
+**Not verified:** anything in a browser; the Site path; real prices; replay on real cases (the number of replayable cases is unknown from here: run `GET /api/decision-snapshot?view=replay` on the Site and read `replayed`, `business` and `investment`; expect almost every thesis result to be "not yet").
+
+**Choices to confirm:**
+1. The comparison values Practice holdings at the last completed IEX close, not a live quote (works off-hours, and is the same price the snapshot stores).
+2. "Keeping the portfolio" in the review means the budget stays in cash (result 0); the stock and SPY use the same dates and the same 15 bp per side.
+3. A leverage check that cannot run ("debt untagged") lets the calculation proceed with a visible caveat, as the brief says; debt above 4× operating cash flow blocks it.
+4. Share count older than 200 days is shown as old, not blocked.
+5. The funnel fold loads only when opened, so opening Discover costs no extra reads.
+6. ES95 and the `practice_mandate` form were not built (optional in the brief). The mandate record is read if one exists.
+
+**Prediction feasibility (3G):** `docs/specs/prediction-feasibility-2026-11-16.md`. Fundamentals are workable point in time from `companyfacts` (frames has no filing date); 67% of 2012 filers are gone from today's ticker list, so delisted companies' fundamentals exist. **Blocker: historical prices** (not reachable; delisted coverage unknown). Harness built and tested on synthetic data only. No performance claim.
+
+**Architecture handoff (3H):** `docs/specs/architecture-handoff-2026-11-16.md`.
+
+**Needs live data or a future date:** every thesis checkpoint (next filings); real implied-expectations results (after the next ingest stores share counts, and after the capex tag list is widened); funnel counts; replay depth; browser checks.
+
+**Next:** (1) widen the capex and debt tag lists as one versioned change (with PR 2's debt fields); (2) compare the Site tree, publish, then walk the click path on EME and one financial company; (3) the stretch shortlist on Discover was not started.
