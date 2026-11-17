@@ -722,3 +722,17 @@ It did not have #36 (company page polish) or #37 (investment case).
 - Mezzanine preferred stock under other tags (`TemporaryEquityCarryingAmountAttributableToParent`) is not read.
 
 **Not verified:** the browser; the split check against real IEX unadjusted bars from the Site.
+
+## 2026-11-17 (later) — Claude Code (Opus): valuation safety, batch 2 (same branch and PR as share safety, #44)
+
+**Founder brief "BATCH 2: valuation safety".** Built on `share-safety` so there is one PR. Two rules from the earlier commit changed on the founder's instruction: a split since the share count is now **unavailable** (it was adjusted), and NCI with no tag is now **"not reported"** (it was "not checked").
+
+**Done:** (1) split since share count → "Unavailable: split since share count"; never adjusted. (2) 10-K/A: classes only from several values on one date inside one filing; tested on real amendment shapes (Tesla 10-K/A 2022-05-02 repeating the 10-K count; Plug Power 10-K/A 2022-03-14 with a new date and count) plus a corrected-count variant. (3) GOOGL and BRK.B: "Unavailable: share classes" (summing needs every class count, which companyfacts cannot show). (4) NCI and preferred: >10% → unavailable; present but unreadable → unavailable; none → "not reported"; read before `facts-parser-v3` → checks not run. (5) banned words removed from existing user-facing text (incl. negated); a static test over every source file and a route test over every route and owner (proved by putting "cheap" back in idea-select: the route test failed on it).
+
+**Verified:** 282/282. Existing assertions changed deliberately: wording of share-class, split and claim messages; "Checks not run" contents (NCI/preferred now "not reported" when absent); the parser marker version (v2 → v3); two idea-card/idea-select wording assertions. `tsc` clean, build OK. Not touched: news-direction, event-match, capex v1, auto-practice (#41), pipeline logic (only a wording string in `app/mcp/route.ts`), deploy settings.
+
+**Real SEC files (offline; split check operator-asserted "none" because IEX is unreachable here):** EMCOR computes (NCI $1.0M ok, preferred $0); FANG NCI $5.995B parsed, preferred not reported, still no price here (held back below $214.75/share once a price exists); GOOGL unavailable (no cover total, other listings; NCI and preferred not reported); BRK.B unavailable (insurer, 2011 count, BRK.A). No real file in the sample had a claim tag in a non-USD unit, so the "unreadable" path is tested on a constructed EUR fact only.
+
+**Bumping the parser to `facts-parser-v3`** means every company read before today shows "Checks not run: noncontrolling interests, preferred stock" until its next SEC refresh or "Load share counts".
+
+**What the parsing cannot handle:** per-class counts (companyfacts drops the class dimension, so summing classes is never possible from it); splits not yet visible in IEX prices; other listings that are notes or preferred (they still block as "share classes", conservatively); NCI and preferred compared at book value; mezzanine preferred under other tags (`TemporaryEquityCarryingAmountAttributableToParent`) not read; an amendment that changes the count on the same date is treated as a correction, which would hide a genuinely new class added only by amendment (none seen).

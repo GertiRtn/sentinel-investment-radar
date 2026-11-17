@@ -47,7 +47,7 @@ export async function companyFor(owner:string,symbol:string){
  * `not_loaded` (no successful SEC read stored), `failed` (the read threw; the message is kept, never swallowed as null)
  * and `loaded` (with whether the last read used the current fact parser).
  */
-export type SecRead={state:'loaded';annual:Figure[];quarterly:Figure[];shareFact:FinancialFact|null;lastGoodAt:string|null;parserCurrent:boolean;tagList:string}|{state:'not_loaded'}|{state:'failed';error:string};
+export type SecRead={state:'loaded';annual:Figure[];quarterly:Figure[];shareFact:FinancialFact|null;claimFacts:FinancialFact[];lastGoodAt:string|null;parserCurrent:boolean;tagList:string}|{state:'not_loaded'}|{state:'failed';error:string};
 export async function secFor(owner:string,entityId:string,asOf:string):Promise<SecRead>{
  const db=database();
  try{
@@ -55,8 +55,9 @@ export async function secFor(owner:string,entityId:string,asOf:string):Promise<S
   if(!ok)return {state:'not_loaded'};
   const file=await companyFile(entityId,asOf,'public',owner,TAG_LIST_V3);
   const shares=(await db.prepare("SELECT f.* FROM financial_fact f WHERE entity_id=? AND metric IN ('shares_outstanding','shares_outstanding_multiclass') AND known_from<=? AND EXISTS(SELECT 1 FROM sec_run s WHERE s.entity_id=f.entity_id AND s.status='success' AND s.raw_event_id=f.raw_event_id)").bind(entityId,asOf).all<FinancialFact>()).results;
+  const claimFacts=(await db.prepare("SELECT f.* FROM financial_fact f WHERE entity_id=? AND metric IN ('nci','nci_redeemable','preferred','claim_unreadable') AND known_from<=? AND EXISTS(SELECT 1 FROM sec_run s WHERE s.entity_id=f.entity_id AND s.status='success' AND s.raw_event_id=f.raw_event_id)").bind(entityId,asOf).all<FinancialFact>()).results;
   const marker=await db.prepare('SELECT last_good_at FROM source_state WHERE source=?').bind(parserSource(entityId)).first<{last_good_at:string|null}>();
-  return {state:'loaded',annual:file.figures as Figure[],quarterly:file.quarterlyFigures as Figure[],shareFact:latestShareCount(shares,asOf),lastGoodAt:file.lastGoodAt?String(file.lastGoodAt):null,parserCurrent:!!marker?.last_good_at,tagList:TAG_LIST_V3};
+  return {state:'loaded',annual:file.figures as Figure[],quarterly:file.quarterlyFigures as Figure[],shareFact:latestShareCount(shares,asOf),claimFacts,lastGoodAt:file.lastGoodAt?String(file.lastGoodAt):null,parserCurrent:!!marker?.last_good_at,tagList:TAG_LIST_V3};
  }catch(e){return {state:'failed',error:(e instanceof Error?e.message:'The SEC records could not be read.').slice(0,200)};}
 }
 const secState=(r:SecRead):SecState=>r.state==='loaded'?{state:'loaded',parserCurrent:r.parserCurrent,tagList:r.tagList}:r;
@@ -102,7 +103,7 @@ export async function impliedFor(owner:string,symbol:string,now=iso()){
  const price:PriceInput='error' in b||!b.last?null:{value:b.last.close,at:b.last.closeAt,basis:'last_close',source:'IEX daily close '+b.last.sessionDate+' (one US exchange)',rawEventId:b.last.rawEventId};
  const ok=loaded(sec),split=ok?.shareFact&&price?await splitFor(symbol,ok.shareFact.period_end,b,now):undefined;
  let tickers:string[]=[];try{const t=JSON.parse(entity.tickers??'[]');if(Array.isArray(t))tickers=t.map(String);}catch{}
- const r=impliedExpectations({symbol,asOf:now,sic:entity.sic??null,figures:ok?.annual??[],shareFact:ok?.shareFact??null,price,sec:secState(sec),split,otherTickers:otherListings(symbol,tickers)});
+ const r=impliedExpectations({symbol,asOf:now,sic:entity.sic??null,figures:ok?.annual??[],shareFact:ok?.shareFact??null,price,sec:secState(sec),split,otherTickers:otherListings(symbol,tickers),claimFacts:ok?.claimFacts??[]});
  return {...r,company:{name:entity.name,cik:entity.cik,sic:entity.sic??null},sources:{secLastGoodAt:ok?.lastGoodAt??null,secRead:sec.state,secError:sec.state==='failed'?sec.error:null,tagList:ok?.tagList??null,priceError:'error' in b?b.error:b.last?null:'No completed IEX daily close in the last 5 days.',priceSessionDate:'error' in b?null:b.last?.sessionDate??null}};
 }
 

@@ -24,7 +24,7 @@ test('nothing selected: the summary says why and how many, instead of an empty p
  assert.equal(r.picked.length,0);assert.match(r.headline,/No case met the research rules or came close/);assert.equal(r.counts.notEnoughData,4);
  assert.deepEqual(r.topBlockers.map(x=>x.reason).sort(),['no usable price or earnings figure for a P/E','recent revenue figures missing','security type not confirmed as an ordinary US share']);
  const none=selectIdeas([],now);assert.match(none.headline,/No cases were assessed/);assert.equal(none.counts.assessed,0);
- assert.match(r.note,/not a forecast/);assert.match(r.note,/does not mean a share is cheap/);
+ assert.match(r.note,/not a forecast/);assert.match(r.note,/does not mean a share is priced low/);
 });
 test('compact card: only valid changes with period and filing link; P/E basis stated; no forecast or instruction wording',()=>{
  const kase={id:'k',symbol:'FIX',createdAt:now,conclusion:'INVESTIGATE',identity:{name:'Fixture Corp'},event:{headline:'Fixture Corp reports results',url:'https://example.test/n',source:'Fixture',publishedAt:now,analysis:{topics:['Earnings or financial results']}},price:{status:'indicative',ratio:20,basis:'last_close',priceLabel:'IEX close 2026-11-12',periodEnd:'2025-12-31'}};

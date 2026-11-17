@@ -11,8 +11,8 @@ export function investmentReadiness(kase: any, ctx: any, match: any) {
   return {
     version: INVESTMENT_READINESS_VERSION,
     status: 'insufficient_for_recommendation',
-    title: 'Buy decision: not enough information yet',
-    explanation: 'The current research filter finds cases to investigate. It has not been validated as a way to decide which shares to buy.',
+    title: 'Investment decision: not enough information yet',
+    explanation: 'The current research filter finds cases to investigate. It has not been validated as a way to decide which shares to own.',
     event: wrong ? 'This news may be about a different company. Resolve the identity before using this case.' : 'The headline is a report. Use the filing check in the full investment thesis to see whether company filings support its connection to the event.',
     financials: comparisons,
     price: p?.status === 'indicative' && Number.isFinite(p.ratio) && p.ratio > 0 ? `The recorded price was ${p.ratio.toFixed(1)} times last reported annual earnings per share. This alone cannot establish whether the shares are good value today.` : 'A usable price-to-earnings comparison was not recorded for this case.',

@@ -32,7 +32,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
-## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 280/280 on 2026-11-17 on branch `share-safety`)
+## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 282/282 on 2026-11-17 on branch `share-safety`)
 
 - Server-side persistence on Cloudflare D1, raw captures in D1/R2 with SHA-256 dedup.
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
@@ -121,11 +121,13 @@ Founder decision: four separate questions per case, never one threshold or one c
   - *Snapshots:* refused (HTTP 422) when no price is available; the browser sends one request id per comparison and ignores a second click while saving (`lib/sentinel/save-guard.ts`).
   - *Checkpoints:* `overdue` after `dueBy` with no qualifying filing, and every not-yet/overdue result says which filing it waits for. Overdue is not a "no".
   - *Comparison:* up to 20 companies priced per comparison; holdings over it are "not priced: over the limit of 20 companies per comparison", never valued.
-- **Share safety (2026-11-16, `implied-expectations-v3`, `xbrl-tags-v3`):**
-  - *Stock splits:* `splitCheck` compares unadjusted and split-only IEX closes (`archivedDailyBars(..., 'raw'|'split')`; the `'all'` archive key is unchanged) on the cover-page session and the price session. A usual ratio (k-for-1 to 50, 1-for-k to 100, 3:2, 5:4, 4:3, 5:2, within 0.5%) adjusts the share count and says so; any other factor, or a check that cannot run, holds the result back. Never mixes pre- and post-split numbers.
-  - *Share classes:* another ticker under the same SEC company (SEC `BRK-B` = IEX `BRK.B`) or several counts in one filing → no market value, "Checks not run: share classes". Classes are never summed: companyfacts carries no class labels, prices or conversion ratios (Alphabet's file has no cover-page total at all; Berkshire's latest is from 2011).
+- **Valuation safety (2026-11-17, batch 2, `implied-expectations-v3`, `xbrl-tags-v3`, `facts-parser-v3`):**
+  - *Stock splits:* `splitCheck` compares unadjusted and split-only IEX closes (`archivedDailyBars(..., 'raw'|'split')`; the `'all'` archive key is unchanged) on the cover-page session and the price session. A split since the share count → "Unavailable: split since share count"; a factor that is not a usual ratio → "Unavailable: possible split since share count"; a check that cannot run → "Unavailable: split check not run (…)". The share count is never adjusted and pre- and post-split numbers are never mixed.
+  - *Amended filings:* several share classes = more than one distinct value on the same cover date inside one filing. A 10-K/A or 10-Q/A is its own filing: a repeated or corrected count is a revision (the most recently filed wins), never a second class.
+  - *Share classes:* summed only if every class count is present. companyfacts never labels a count with its class, so no stored source can show that; another ticker under the same SEC company (SEC `BRK-B` = IEX `BRK.B`) or several counts in one filing → "Unavailable: share classes", and "Checks not run: share classes".
   - *Old counts:* a cover-page count more than 400 days before the price → no market value.
-  - *Claims ahead of or beside common shareholders:* `xbrl-tags-v3` = v2 + `nci` (`MinorityInterest`), `nci_redeemable` (`RedeemableNoncontrollingInterestEquityCarryingAmount`), `preferred` (`PreferredStockValue`, `PreferredStockValueOutstanding`). Book value at the base cash-flow period end against market value: above 10% the headline is held back with the reason in plain English; at or below, a note with the share; untagged stays "not checked". v1 and v2 lists are unchanged; the decision workflow reads v3.
+  - *Noncontrolling interests and preferred stock* (`xbrl-tags-v3` = v2 + `nci` `MinorityInterest`, `nci_redeemable` `RedeemableNoncontrollingInterestEquityCarryingAmount`, `preferred` `PreferredStockValue` / `PreferredStockValueOutstanding`; v1 and v2 unchanged), at the base cash-flow year-end: above 10% of market value (book value) → unavailable with the reason; tag present but unreadable (a unit other than USD: `claim_unreadable` marker fact) or reported only for other dates within 400 days → unavailable with the reason; nothing reported → "not reported in the company's filings" (a note, not a check not run); company read before `facts-parser-v3` → "Checks not run".
+  - *Wording:* banned words removed from existing user-facing text, including negated uses (idea-select, idea-card, investment-readiness, case overview, discovery, investment brief, plain brief, price assessment, thesis, discovery case, MCP tool text, the old ledger's labels "Practice purchase/sale"). Stored values `buy`/`sell` in `paper_trade` records are unchanged. Two tests guard it: every string in `lib/`, `components/` and `app/` (TypeScript AST, small explained allow-list) and every string the routes return across all test owners and cases.
 - Offline research only: `scripts/research/` (`implied-offline.mjs`, `harness.mjs`). Specs: `docs/specs/prediction-feasibility-2026-11-16.md`, `docs/specs/architecture-handoff-2026-11-16.md`.
 
 ## Shadow reader (evaluation only — added 2026-11-12)

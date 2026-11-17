@@ -3,11 +3,11 @@ import {database,hash,iso} from '@/db/store';
 import {ApiError} from './api';
 import {parseFacts,derive,quarterlyFigures,TAG_LIST_V1,type FinancialFact} from './financial';
 /**
- * What the fact parser reads (2026-11-16): `facts-parser-v2` = cover-page share counts plus every tag in every tag list
- * (xbrl-tags-v1 and v2). A successful ingest records it per company in source_state, so a reader can tell "SEC data was
+ * What the fact parser reads: `facts-parser-v3` (2026-11-17) = cover-page share counts (amended filings handled), every
+ * tag in every tag list (xbrl-tags-v1, v2 and v3) and markers for claim tags that cannot be read (v2: 2026-11-16). A successful ingest records it per company in source_state, so a reader can tell "SEC data was
  * stored before this parser" from "the filings do not report it".
  */
-export const FACTS_PARSER_VERSION='facts-parser-v2';
+export const FACTS_PARSER_VERSION='facts-parser-v3'; // v3 (2026-11-17): + noncontrolling interests, preferred stock (xbrl-tags-v3), unreadable-claim markers, amended-filing share counts
 export const parserSource=(entityId:string)=>`sentinel:facts-parser:${FACTS_PARSER_VERSION}:${entityId}`;
 const bindings=()=>env as unknown as {DB:D1Database;ARCHIVE:R2Bucket;SEC_CONTACT_EMAIL?:string};
 const wait=(ms:number)=>new Promise(r=>setTimeout(r,ms));

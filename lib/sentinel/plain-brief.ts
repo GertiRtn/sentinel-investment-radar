@@ -19,7 +19,7 @@ export function plainBrief(kase: any, ctx: any, match: any) {
   }
   const pe = kase?.price;
   const price = pe?.status === 'indicative' && Number.isFinite(pe.ratio) && pe.ratio > 0
-    ? `At the recorded price, the shares were valued at about ${pe.ratio.toFixed(1)} times the last reported annual earnings per share. This is one comparison, not proof the shares are cheap.`
+    ? `At the recorded price, the shares were valued at about ${pe.ratio.toFixed(1)} times the last reported annual earnings per share. This is one comparison, not proof the shares are priced low.`
     : 'Sentinel does not have a usable price-to-earnings comparison for this case.';
   return {headline, why, positives, price};
 }

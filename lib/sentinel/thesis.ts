@@ -38,7 +38,7 @@ function matchStatus(m: EventMatch) {
 
 function eventType(kase: any) {
   const topics: string[] = kase?.event?.analysis?.topics ?? [], role = kase?.identity?.relevance;
-  if (topics.length && topics.every(t => t === 'Analyst opinion')) return { type: 'analyst_opinion' as const, label: 'Analyst opinion', text: 'The headline reports an analyst’s view (a rating or price-target change). It is an opinion about the company, not something the company announced.' };
+  if (topics.length && topics.every(t => t === 'Analyst opinion')) return { type: 'analyst_opinion' as const, label: 'Analyst opinion', text: 'The headline reports an analyst’s view (a rating change or a revised price forecast). It is an opinion about the company, not something the company announced.' };
   if (role?.level === 'direct_candidate' && role.role === 'possible event subject' && topics.some(t => t !== 'Analyst opinion')) return { type: 'company_report' as const, label: 'Reads as a company announcement', text: 'The headline wording has the company itself reporting or announcing something. Wording is not proof: see Event evidence for whether a company filing supports it.' };
   if (role?.level === 'direct_candidate') return { type: 'about_company' as const, label: 'Report about the company', text: 'The headline has something happening to the company (for example a lawsuit or an offer). The source of the claim is the news provider, not the company.' };
   return { type: 'unclear' as const, label: 'Kind of report unclear', text: 'The stored headline does not show whether this is a company announcement, an opinion or a mention.' };
@@ -141,7 +141,7 @@ export function buildThesis(input: { kase: any; context: any; match: EventMatch;
     challenges: shownChallenges, challengesNote: allChallenges.length ? null : 'No evidence-supported counterpoint was found in the recorded figures. That is not evidence of safety.',
     counts: { supports: wrong ? 0 : supports.length, challenges: allChallenges.length, unknowns: unknowns.length },
     priceValuation: { valuation, priceMove, expectations: 'Unknown. Sentinel has no analyst estimates or guidance history.',
-      caveat: 'A price move around a report does not show the report caused it, that the market missed it, or that the shares are cheap or dear.' },
+      caveat: 'A price move around a report does not show the report caused it, that the market missed it, or that the shares are priced low or high.' },
     questions: questions.slice(0, MAX_POINTS),
     summary: {
       reason: reason ? { text: reason.text, basis: reason.basis, period: reason.periods?.latest ?? null } : null,
