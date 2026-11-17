@@ -464,6 +464,8 @@ await test('decision workflow: implied expectations → three-way comparison →
   const source='alpaca:iex:daily-bars:'+sym+':'+new Date(Date.now()-400*day).toISOString().slice(0,10)+':'+new Date().toISOString().slice(0,10),id='dw-bars-'+sym,now=new Date().toISOString();
   await db.prepare('INSERT INTO raw_event(id,source,fetched_at,published_at,known_from,content_hash,payload,http_status) VALUES(?,?,?,NULL,?,?,?,200)').bind(id,source,now,now,id,JSON.stringify({bars:dates.map((d,i)=>({t:d+'T05:00:00Z',c:xs[i]})),next_page_token:null})).run();
   await db.prepare('INSERT INTO source_state(source,failures,checked_at,last_good_at,raw_event_id) VALUES(?,0,?,?,?) ON CONFLICT(source) DO UPDATE SET failures=0,last_good_at=excluded.last_good_at,raw_event_id=excluded.raw_event_id,retry_at=NULL,error=NULL').bind(source,now,now,id).run();}
+ // The split check reads unadjusted and split-only closes; no split in this fixture, so they equal the adjusted series.
+ mock.get('https://data.alpaca.markets').intercept({path:/^\/v2\/stocks\/DWF\/bars\?.*adjustment=(raw|split)/,headers:H}).reply(200,JSON.stringify({bars:dates.map((d,i)=>({t:d+'T05:00:00Z',c:series(1.5,50)[i]})),next_page_token:null})).persist();
  const lastDate=dates.at(-1);
  // 1. What the price assumes: $50 × 23,047,714 = $1,152,385,700 against $100M → 5.00% (hand calculation in tests/decision-workflow.test.mjs).
  const imp=await req('/implied-expectations?symbol=DWF','GET',undefined,owner);assert.equal(imp.status,200,JSON.stringify(imp.data));
@@ -548,15 +550,15 @@ await test('review fixes: share-count backfill through ingest, SEC load states, 
  await db.prepare('INSERT INTO entity_watch(id,owner,entity_id,known_from) VALUES(?,?,?,?)').bind(crypto.randomUUID(),owner,'sec:'+cik,now).run();
  const nl=(await req('/implied-expectations?symbol=BKF','GET',undefined,owner)).data;assert.equal(nl.status,'unavailable');assert.equal(nl.missing[0],'SEC data not loaded yet: no successful SEC read is stored for this company.');assert.equal(nl.sources.secRead,'not_loaded');
  // 2. Load through the normal ingest path; then simulate data stored before the share-count parser by removing the parser marker.
- serve();const b1=await req('/implied-expectations','POST',{action:'backfill',symbol:'BKF'},owner);assert.equal(b1.status,200,JSON.stringify(b1.data));assert.equal(b1.data.results[0].status,'loaded');assert.equal(b1.data.results[0].shareCountFacts,1);assert.equal(b1.data.parser,'facts-parser-v2');
+ serve();const b1=await req('/implied-expectations','POST',{action:'backfill',symbol:'BKF'},owner);assert.equal(b1.status,200,JSON.stringify(b1.data));assert.equal(b1.data.results[0].status,'loaded');assert.equal(b1.data.results[0].shareCountFacts,1);assert.equal(b1.data.parser,'facts-parser-v3');
  assert.equal((await req('/implied-expectations','POST',{action:'backfill',symbol:'BKF'},owner)).data.processed,0,'already current: nothing re-read');
- await db.prepare("DELETE FROM source_state WHERE source=?").bind('sentinel:facts-parser:facts-parser-v2:sec:'+cik).run();
+ await db.prepare("DELETE FROM source_state WHERE source=?").bind('sentinel:facts-parser:facts-parser-v3:sec:'+cik).run();
  await db.prepare("INSERT INTO raw_event(id,source,fetched_at,published_at,known_from,content_hash,payload,http_status) VALUES('bk-old','fixture',?,NULL,?,'bk-old','{}',200)").bind(now,now).run();
  const owner2='backfill-owner-2';await db.prepare('INSERT INTO entity_watch(id,owner,entity_id,known_from) VALUES(?,?,?,?)').bind(crypto.randomUUID(),owner2,'sec:'+cik,now).run();
  // The share facts exist (stored by the ingest above), so to see "not loaded yet" use a company with no share facts and no marker:
  const cik2='0000000045';await db.prepare('INSERT INTO entity(id,cik,name,tickers,exchanges,sic,created_at,raw_event_id) VALUES(?,?,?,?,?,?,?,?)').bind('sec:'+cik2,cik2,'Older Read Inc.','["OLDR"]','["Test"]','1731',now,'bk-raw').run();
  await db.prepare('INSERT INTO entity_watch(id,owner,entity_id,known_from) VALUES(?,?,?,?)').bind(crypto.randomUUID(),owner,'sec:'+cik2,now).run();
- await db.prepare("INSERT INTO sec_run(id,entity_id,known_from,status,message,raw_event_id) VALUES(?,?,?,'success','fixture: read before facts-parser-v2','bk-old')").bind(crypto.randomUUID(),'sec:'+cik2,now).run();
+ await db.prepare("INSERT INTO sec_run(id,entity_id,known_from,status,message,raw_event_id) VALUES(?,?,?,'success','fixture: read before facts-parser-v3','bk-old')").bind(crypto.randomUUID(),'sec:'+cik2,now).run();
  const old=(await req('/implied-expectations?symbol=OLDR','GET',undefined,owner)).data;assert.equal(old.sources.secRead,'loaded');assert.equal(old.canLoadShareCounts,true);assert.match(old.missing[0],/^Share count not loaded yet: this company.s SEC data was stored before Sentinel read cover-page share counts\./);
  // With the ingest-loaded company: v2 reads EMCOR-style capex, so the result is computed once a price exists.
  const dates=[];for(let t=Date.now()-300*day;t<Date.now()-day;t+=day){const d=new Date(t);if(d.getUTCDay()%6)dates.push(d.toISOString().slice(0,10));}
@@ -564,9 +566,10 @@ await test('review fixes: share-count backfill through ingest, SEC load states, 
   await db.prepare('INSERT INTO raw_event(id,source,fetched_at,published_at,known_from,content_hash,payload,http_status) VALUES(?,?,?,NULL,?,?,?,200)').bind(id,source,t,t,id,JSON.stringify({bars:dates.map((d,i)=>({t:d+'T05:00:00Z',c:last*(1+((i*37)%11-5)/1000*0)})),next_page_token:null})).run();
   await db.prepare('INSERT INTO source_state(source,failures,checked_at,last_good_at,raw_event_id) VALUES(?,0,?,?,?) ON CONFLICT(source) DO UPDATE SET failures=0,last_good_at=excluded.last_good_at,raw_event_id=excluded.raw_event_id,retry_at=NULL,error=NULL').bind(source,t,t,id).run();};
  await seed('BKF',50);
- await db.prepare("INSERT INTO source_state(source,failures,checked_at,last_good_at) VALUES(?,0,?,?)").bind('sentinel:facts-parser:facts-parser-v2:sec:'+cik,now,now).run();
- const ok=(await req('/implied-expectations?symbol=BKF','GET',undefined,owner)).data;assert.equal(ok.status,'computed',JSON.stringify(ok.missing));assert.equal(ok.baseCashFlow.capex,30e6);assert.equal(ok.tagList,undefined);assert.equal(ok.sources.tagList,'xbrl-tags-v2');assert.equal(ok.implied.growthPct,5);
- assert.equal(ok.notRun.text,'Checks not run: noncontrolling interests, preferred stock, debt (not tagged).');
+ mock.get('https://data.alpaca.markets').intercept({path:/^\/v2\/stocks\/BKF\/bars\?.*adjustment=(raw|split)/,headers:H}).reply(200,JSON.stringify({bars:dates.map(d=>({t:d+'T05:00:00Z',c:50})),next_page_token:null})).persist();
+ await db.prepare("INSERT INTO source_state(source,failures,checked_at,last_good_at) VALUES(?,0,?,?)").bind('sentinel:facts-parser:facts-parser-v3:sec:'+cik,now,now).run();
+ const ok=(await req('/implied-expectations?symbol=BKF','GET',undefined,owner)).data;assert.equal(ok.status,'computed',JSON.stringify(ok.missing));assert.equal(ok.baseCashFlow.capex,30e6);assert.equal(ok.tagList,undefined);assert.equal(ok.sources.tagList,'xbrl-tags-v3');assert.equal(ok.implied.growthPct,5);
+ assert.equal(ok.notRun.text,'Checks not run: debt (not tagged).');assert.deepEqual([ok.claims.nci.state,ok.claims.preferred.state],['not_reported','not_reported'],'no tag in the filing: "not reported"');
  // The company page (xbrl-tags-v1) still shows no capex for this year: existing figures are not changed.
  const file=await db.prepare("SELECT COUNT(*) n FROM financial_fact WHERE entity_id=? AND metric='capex' AND source_tag='PaymentsToAcquireProductiveAssets'").bind('sec:'+cik).first();assert.equal(file.n,1);
  // 3. No price, no snapshot: a case for a symbol with no daily bars.
@@ -580,7 +583,7 @@ await test('review fixes: share-count backfill through ingest, SEC load states, 
  const bcase='discovery-case:bkf';await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_case',?,?)").bind(bcase,owner,caseAt,'sec:'+cik,JSON.stringify({version:'discovery-case-v2',symbol:'BKF',createdAt:caseAt,status:'complete',conclusion:'INVESTIGATE',decision:{version:'research-screen-v2'},identity:{cik,name:'Backfill Fixture Inc.'},event:{headline:'Backfill Fixture wins contract',publishedAt:caseAt}})).run();
  const rid=crypto.randomUUID(),[s1,s2]=await Promise.all([1,2].map(()=>req('/decision-snapshot','POST',{action:'save',caseId:bcase,requestId:rid,checkpoint:'annual_cash_flow_positive'},owner)));
  assert.equal(s1.status,200,JSON.stringify(s1.data));assert.equal(s2.status,200);assert.equal(s1.data.id,s2.data.id);assert.equal((await db.prepare("SELECT COUNT(*) n FROM signal_log WHERE owner=? AND kind='decision_snapshot'").bind(owner).first()).n,1);
- assert.equal(s1.data.snapshot.impliedExpectations.version,'implied-expectations-v2');assert.match(s1.data.snapshot.checkpoint.condition,/annual filing/);
+ assert.equal(s1.data.snapshot.impliedExpectations.version,'implied-expectations-v3');assert.match(s1.data.snapshot.checkpoint.condition,/annual filing/);
  const reopened=(await req('/decision-snapshot?id='+encodeURIComponent(s1.data.id),'GET',undefined,owner)).data;assert.equal(reopened.review.business.status,'not_yet');assert.match(reopened.review.business.text,/Waiting for: a 10-K filed after/);
  // 5. More than 20 companies: the extras are labelled, never valued.
  const t=new Date().toISOString();for(let k=0;k<21;k++){const sym='H'+String.fromCharCode(65+k)+'X';await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'practice_trade',NULL,?)").bind('bk-trade-'+k,owner,t,JSON.stringify({version:'practice-v2',action:'open',sequence:k+1,positionId:'bk-pos-'+k,symbol:sym,amountCents:1000,quantityMicros:1_000_000,price:{priceCents:1000,at:t,rawEventId:'r',source:'IEX midpoint'},spy:{priceCents:50000,at:t,rawEventId:'r',source:'IEX midpoint'},thesis:'',exitPlan:'',killCondition:'',conviction:50,caseId:null,evidenceScore:null,createdAt:t})).run();}
@@ -588,6 +591,51 @@ await test('review fixes: share-count backfill through ingest, SEC load states, 
  const cmp=(await req('/decision-compare','POST',{symbol:'BKF'},owner)).data;const over=cmp.start.holdings.filter(h=>h.status==='not priced: over the limit of 20 companies per comparison');
  assert.equal(over.length,2,'BKF plus 19 holdings are priced; the other 2 are over the limit');assert.ok(over.every(h=>h.valueCents===null));assert.match(cmp.options[0].scenarios[0].reason,/over the limit of 20 companies per comparison/);
  for(const x of [nl,old,ok,refused.data,cmp])assert.ok(!/\b(undervalued|overvalued|cheap|expensive|upside|target|buy|sell|should)\b/i.test(JSON.stringify(x).replace(/Backfill Fixture[^"]*|Older Read[^"]*/g,'')));
+});
+await test('share safety through the routes: a split since the share count, a large NCI and extra share classes make the result unavailable, and no rendered output carries a banned word',async()=>{
+ const owner='safety-owner',day=86400000,H={'apca-api-key-id':'fixture-key','apca-api-secret-key':'fixture-secret'},BANNED=/\b(undervalued|overvalued|cheap|expensive|upside|target|buy|sell|should)\b/i;
+ const Y=new Date().getUTCFullYear()-1,cover=(Y+1)+'-01-31',filed=(Y+1)+'-02-15';
+ const dates=[];for(let t=Date.now()-300*day;t<Date.now()-day;t+=day){const d=new Date(t);if(d.getUTCDay()%6)dates.push(d.toISOString().slice(0,10));}
+ const splitDay=dates.find(d=>d>cover&&d>dates[dates.length-60]); // a 2-for-1 split well after the cover-page date
+ const company=async(cik,symbol,tickers,{shares,nci=null})=>{
+  const acc=cik+'-'+String(Y+1).slice(2)+'-000001',dur=val=>({start:Y+'-01-01',end:Y+'-12-31',val,accn:acc,fy:Y,fp:'FY',form:'10-K',filed}),inst=val=>({end:Y+'-12-31',val,accn:acc,fy:Y,fp:'FY',form:'10-K',filed});
+  const us={NetCashProvidedByUsedInOperatingActivities:{units:{USD:[dur(130e6)]}},PaymentsToAcquirePropertyPlantAndEquipment:{units:{USD:[dur(30e6)]}},Revenues:{units:{USD:[dur(900e6)]}},LongTermDebtNoncurrent:{units:{USD:[inst(100e6)]}},LongTermDebtCurrent:{units:{USD:[inst(20e6)]}},CashAndCashEquivalentsAtCarryingValue:{units:{USD:[inst(50e6)]}},PreferredStockValue:{units:{USD:[inst(0)]}}};
+  if(nci!==null)us.MinorityInterest={units:{USD:[inst(nci)]}};
+  const dei={EntityCommonStockSharesOutstanding:{units:{shares:[{end:cover,val:shares,accn:acc,fy:Y,fp:'FY',form:'10-K',filed}]}}};
+  for(const [path,payload] of [['/submissions/CIK'+cik+'.json',{cik:Number(cik),name:symbol+' Fixture Inc.',sic:'3570',tickers,exchanges:['Test'],filings:{recent:{accessionNumber:[acc],filingDate:[filed],form:['10-K'],reportDate:[Y+'-12-31'],items:[''],primaryDocument:['r.htm']},files:[]}}],['/api/xbrl/companyfacts/CIK'+cik+'.json',{cik:Number(cik),facts:{'us-gaap':us,dei}}]])mock.get('https://data.sec.gov').intercept({path,headers:{'user-agent':'Sentinel Research research@example.test'}}).reply(200,JSON.stringify(payload));
+  assert.equal((await req('/watch','POST',{identifier:cik},owner)).status,200);
+ };
+ const bars=(sym,adj,f)=>mock.get('https://data.alpaca.markets').intercept({path:new RegExp('^/v2/stocks/'+sym.replace('.','\\.')+'/bars\\?.*adjustment='+adj),headers:H}).reply(200,JSON.stringify({bars:dates.map(d=>({t:d+'T05:00:00Z',c:f(d)})),next_page_token:null})).persist();
+ // SPL: 10,000,000 shares on the cover page, then a 2-for-1 split. Raw price 100 before the split and 50 after; adjusted series 50 throughout.
+ await company('0000000061','SPL',['SPL'],{shares:10_000_000});for(const a of ['all','split'])bars('SPL',a,()=>50);bars('SPL','raw',d=>d<splitDay?100:50);
+ // NCX: NCI $600M against a market value of $1.0B (20,000,000 × $50).
+ await company('0000000062','NCX',['NCX'],{shares:20_000_000,nci:600e6});for(const a of ['all','raw','split'])bars('NCX',a,()=>50);
+ // MCL: two listings of the same SEC company.
+ await company('0000000063','MCL',['MCL','MCL-B'],{shares:20_000_000,nci:0});for(const a of ['all','raw','split'])bars('MCL',a,()=>50);
+ const get=sym=>req('/implied-expectations?symbol='+sym,'GET',undefined,owner);
+ const spl=(await get('SPL')).data;assert.equal(spl.status,'unavailable');assert.equal(spl.marketValue,undefined,'never 50 × 10,000,000 (pre-split count with a post-split price)');
+ assert.equal(spl.split.state,'split');assert.equal(spl.split.ratio,'2-for-1');assert.match(spl.split.source,/^Alpaca IEX daily closes, unadjusted and split-adjusted/);
+ assert.match(spl.missing[0],/^Unavailable: split since share count\. A 2-for-1 split took effect between the cover-page date \(\d{4}-\d\d-\d\d\) and the price \(\d{4}-\d\d-\d\d\), so the share count and the price are on different bases\./);
+ const ncx=(await get('NCX')).data;assert.equal(ncx.status,'unavailable');assert.equal(ncx.implied,undefined);assert.match(ncx.missing[0],/^Unavailable: noncontrolling interests \(minority owners in subsidiaries\) are about 60% of the market value \(book value \$600\.0M at \d{4}-12-31\)\./);
+ const mcl=(await get('MCL')).data;assert.equal(mcl.status,'unavailable');assert.ok(mcl.missing.some(m=>m.startsWith('Unavailable: share classes. This SEC company also lists MCL.B.')));assert.match(mcl.notRun.text,/share classes/);
+ // A split check that cannot read prices holds the result back.
+ await company('0000000064','NRP',['NRP'],{shares:20_000_000,nci:0});bars('NRP','all',()=>50);mock.get('https://data.alpaca.markets').intercept({path:/^\/v2\/stocks\/NRP\/bars\?.*adjustment=(raw|split)/,headers:H}).reply(503,'unavailable').persist();
+ const nrp=(await get('NRP')).data;assert.equal(nrp.status,'unavailable');assert.match(nrp.missing[0],/^Unavailable: split check not run \(unadjusted IEX prices could not be read/);
+ // Every other route of the workflow, on these companies; then scan every string the pages render.
+ const caseAt=new Date(Date.now()-2*day).toISOString(),cases=[['SPL','0000000061'],['NCX','0000000062'],['MCL','0000000063']];
+ for(const [sym,cik] of cases)await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_case',?,?)").bind('discovery-case:safety-'+sym,owner,caseAt,'sec:'+cik,JSON.stringify({version:'discovery-case-v2',symbol:sym,createdAt:caseAt,status:'complete',conclusion:'INVESTIGATE',decision:{version:'research-screen-v2'},identity:{cik,name:sym+' Fixture Inc.'},event:{headline:sym+' Fixture headline',publishedAt:caseAt}})).run();
+ const outputs=[spl,ncx,mcl,nrp];
+ for(const [sym] of cases){
+  const cmp=(await req('/decision-compare','POST',{symbol:sym},owner)).data;outputs.push(cmp);
+  const save=await req('/decision-snapshot','POST',{action:'save',caseId:'discovery-case:safety-'+sym,requestId:crypto.randomUUID(),checkpoint:'quarterly_revenue_yoy',shown:cmp},owner);assert.equal(save.status,200,JSON.stringify(save.data));outputs.push(save.data);
+  outputs.push((await req('/decision-snapshot?id='+encodeURIComponent(save.data.id),'GET',undefined,owner)).data,(await req('/decision-snapshot','POST',{action:'review',id:save.data.id},owner)).data,(await req('/decision-snapshot?symbol='+sym,'GET',undefined,owner)).data);
+ }
+ outputs.push((await req('/decision-snapshot?view=replay','GET',undefined,owner)).data,(await req('/discovery-funnel?hours=168','GET',undefined,owner)).data,(await req('/implied-expectations','POST',{action:'backfill'},owner)).data);
+ outputs.push((await req('/decision-snapshot','POST',{action:'save',caseId:'missing',requestId:crypto.randomUUID(),checkpoint:'quarterly_revenue_yoy'},owner)).data,(await req('/implied-expectations?symbol=NOPE','GET',undefined,owner)).data);
+ const strings=[];const walk=(v,key)=>{if(typeof v==='string'){if(!['headline','name','company','entityName'].includes(key))strings.push(v);}else if(Array.isArray(v))v.forEach(x=>walk(x,key));else if(v&&typeof v==='object')for(const [k,x] of Object.entries(v))walk(x,k);};
+ for(const o of outputs)walk(o,'');
+ const hits=strings.map(x=>x.replace(/(SPL|NCX|MCL|NRP) Fixture[^.;]*/g,'')).filter(x=>BANNED.test(x));
+ assert.ok(strings.length>200,'a real amount of rendered text was scanned ('+strings.length+')');assert.deepEqual(hits,[]);
 });
 await test('discovery funnel route: read-only counts from stored records reconcile; the window is validated',async()=>{
  const before=(await db.prepare("SELECT COUNT(*) n FROM signal_log").first()).n;
@@ -624,6 +672,30 @@ await test('research team: owner-only, off by default (rules template, no networ
  const everything=JSON.stringify([g.data,first.data,again.data,(await req('/research-team?case='+caseId)).data,(await db.prepare("SELECT body FROM signal_log WHERE kind='research_run'").all()).results]);
  assert.ok(!everything.includes('nvapi-FIXTURE-SECRET-77'),'the model key appears in no response or stored run');
  await assert.rejects(db.prepare("UPDATE signal_log SET body='{}' WHERE id=?").bind(requestId).run(),/immutable/);
+});
+await test('no banned word in any text the routes return, across every owner and case these tests created (negated uses included)',async()=>{
+ const BANNED=/\b(undervalued|overvalued|cheap|expensive|upside|target|buy|sell|should)\b/i;
+ // Keys that carry third-party text (news headlines and summaries, company names, filing spans, links) or stored data values
+ // (the old manual ledger's side 'buy'/'sell'). Everything else is Sentinel's own wording and is scanned.
+ const THIRD_PARTY=new Set(['headline','providerSummary','summary','title','name','company','entityName','url','source','span','quote','quotes','side','symbols','tickers','raw','payload','body']);
+ const owners=(await db.prepare("SELECT DISTINCT owner FROM signal_log WHERE kind='discovery_case'").all()).results.map(r=>r.owner).concat(['owner-a']);
+ const outputs=[];let calls=0;
+ const get=async(path,owner)=>{const r=await req(path,'GET',undefined,owner);calls++;outputs.push({path,owner,status:r.status,data:r.data});};
+ for(const owner of [...new Set(owners)]){
+  for(const p of ['/discovery','/ideas','/morning-brief','/following','/practice','/practice-risk','/auto-practice','/watch','/criteria','/journal','/pipeline','/discovery-funnel?hours=168','/paper','/shadow-comparison'])await get(p,owner);
+  const cases=(await db.prepare("SELECT id,json_extract(body,'$.symbol') symbol FROM signal_log WHERE owner=? AND kind='discovery_case' ORDER BY created_at DESC LIMIT 4").bind(owner).all()).results;
+  for(const c of cases){const id=encodeURIComponent(c.id);
+   for(const p of ['/case-context?case='+id,'/case-context?case='+id+'&prices=1','/ideas?case='+id,'/ideas?price='+id,'/event-verification?case='+id,'/investment-case?case='+id,'/research-team?case='+id])await get(p,owner);
+   if(c.symbol)for(const p of ['/company-page?symbol='+c.symbol,'/implied-expectations?symbol='+c.symbol,'/decision-snapshot?symbol='+c.symbol])await get(p,owner);}
+  const snaps=(await db.prepare("SELECT id FROM signal_log WHERE owner=? AND kind='decision_snapshot' LIMIT 3").bind(owner).all()).results;
+  for(const sn of snaps)await get('/decision-snapshot?id='+encodeURIComponent(sn.id),owner);
+ }
+ await get('/brief?entity=sec:0000000001','owner-a');
+ const strings=[];const walk=(v,key)=>{if(THIRD_PARTY.has(key))return;if(typeof v==='string')strings.push({key,text:v});else if(Array.isArray(v))v.forEach(x=>walk(x,key));else if(v&&typeof v==='object')for(const [k,x] of Object.entries(v))walk(x,k);};
+ for(const o of outputs)walk(o.data,'');
+ const hits=strings.filter(x=>BANNED.test(x.text)).map(x=>x.key+': '+x.text.slice(0,140));
+ assert.ok(calls>100&&strings.length>2000,`a real amount of output was scanned (${calls} requests, ${strings.length} strings)`);
+ assert.deepEqual([...new Set(hits)],[]);
 });
 await test('database blocks mutations to captured facts, predictions, resolutions, criteria and evaluations',async()=>{
  for(const table of ['raw_event','financial_fact','signal_log','resolution_record','kill_criterion','criterion_evaluation'])for(const operation of [`DELETE FROM ${table}`,`UPDATE ${table} SET id=id`])await assert.rejects(()=>db.prepare(operation).run(),/immutable/);

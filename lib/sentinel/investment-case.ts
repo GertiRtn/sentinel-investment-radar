@@ -206,7 +206,7 @@ export function mechanisms(i: Input, c: ReturnType<typeof checks>) {
       : problems.length ? { label: 'Improvement matched to the problem', status: problems.every(p => p.status === 'not_met') ? 'not_met' : 'unknown', detail: problems.map(p => `${p.problem}: ${p.detail}`).join(' ') }
       : { label: 'Improvement matched to the problem', status: 'unknown', detail: `No improvement signal is defined for ${otherProblems.join(' and ').toLowerCase()} in the prototype (financing needs term analysis).` };
     mk('distress', 'Distress with a specific improvement', [{ label: 'Confirmed business problem', status: 'met', detail: [...problems.map(p => p.problem), ...otherProblems].join(', ') }, improvement, viability],
-      ['Why the improvement should last', 'Whether the problem is cyclical or structural', ...(otherProblems.length ? ['Financing improvement (not assessable in the prototype)'] : [])],
+      ['Why the improvement may last', 'Whether the problem is cyclical or structural', ...(otherProblems.length ? ['Financing improvement (not assessable in the prototype)'] : [])],
       [{ id: 'improvement', rule: 'improvement_positive', label: 'Matched improvement vs a year earlier', baseline: null }]);
   }
 

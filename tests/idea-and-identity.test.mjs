@@ -70,7 +70,7 @@ test('idea card: a clear rule-based view with for, against, unknowns and fit; ne
  assert.ok(card.evidenceFor.some(l=>/Revenue \(quarter\) \+12\.3%/.test(l.text)&&/a-1/.test(l.detail)));assert.ok(card.counter.some(l=>/Net income \(year\) -8\.0%/.test(l.text)));
  assert.ok(!JSON.stringify(card).includes('Operating cash flow (year)'),'a comparison with no valid % is not turned into a claim');
  assert.ok(card.evidenceFor.some(l=>/P\/E 20\.0 \(IEX close 2026-11-12/.test(l.text)&&/not a live price/.test(l.detail)));
- assert.ok(card.counter.some(l=>/may already reflect/.test(l.text)));assert.ok(card.missing[0].startsWith('Upside or fair value: not estimated'));
+ assert.ok(card.counter.some(l=>/may already reflect/.test(l.text)));assert.ok(card.missing[0].startsWith('Fair value or a future price: not estimated'));
  assert.equal(card.fit.status,'known');assert.equal(card.fit.heldInPractice,false);assert.equal(card.fit.heldInExperiment,true);assert.equal(card.fit.weightIfAddedPct,10);assert.match(card.fit.note,/does not know your real holdings/);
  const text=JSON.stringify(card).toLowerCase();for(const banned of ['buy','sell','price target','probability of','expected return','you should buy','sell now','guarantee'])assert.ok(!text.includes(banned),banned);
  assert.deepEqual(ideaCard({kase:mk(),context:ctx,score,match:m,fit}),card,'deterministic');

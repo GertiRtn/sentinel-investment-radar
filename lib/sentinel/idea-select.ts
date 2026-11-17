@@ -70,7 +70,7 @@ export function selectIdeas(cases: LightCase[], now: string) {
     : picked.length ? `No case met all three research rules in the last ${IDEA_WINDOW_DAYS} days. These ${picked.length === 1 ? 'is the closest' : 'are the closest'}, with what each one lacks.`
     : `No case met the research rules or came close in the last ${IDEA_WINDOW_DAYS} days.`;
   return { version: IDEA_SELECT_VERSION, windowDays: IDEA_WINDOW_DAYS, picked, counts, topBlockers, headline,
-    note: 'Order is for reading, not a forecast. Meeting the rules does not mean a share is cheap or will rise.' };
+    note: 'Order is for reading, not a forecast. Meeting the rules does not mean a share is priced low or will rise.' };
 }
 
 /** Compact card for the list, from the full idea card and context. Nothing new is computed here. */

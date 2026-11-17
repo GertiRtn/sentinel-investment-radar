@@ -6,7 +6,7 @@ export function makeOrder(state:PaperState,input:{symbol:string;side:'buy'|'sell
  const grossCents=Math.round(input.quantityMicros*input.priceCents/1_000_000),feeCents=Math.max(1,Math.ceil(grossCents/1000));
  if(grossCents<1)throw new Error('Trade value must be at least $0.01.');
  if(input.side==='buy'&&grossCents+feeCents>state.cashCents)throw new Error('Not enough practice cash to cover this trade and its estimated fee.');
- if(input.side==='sell'&&(state.positions[input.symbol]?.quantityMicros||0)<input.quantityMicros)throw new Error('You cannot sell more than you hold.');
+ if(input.side==='sell'&&(state.positions[input.symbol]?.quantityMicros||0)<input.quantityMicros)throw new Error('You cannot record a sale larger than your holding.');
  if(input.side==='sell'&&grossCents<=feeCents)throw new Error('Trade value must exceed the estimated fee.');
  return {...input,sequence:state.version+1,grossCents,feeCents,createdAt};
 }

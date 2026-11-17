@@ -72,7 +72,7 @@ export function ideaCard(input: { kase: any; context: any; score: any; match: Ev
 
   // --- Missing -------------------------------------------------------------------
   const missing: string[] = [
-    'Upside or fair value: not estimated. Sentinel has no validated method for it and will not invent one.',
+    'Fair value or a future price: not estimated. Sentinel has no validated method for it and will not invent one.',
     'What the market expected before the report (consensus, prior guidance).',
     ...unknownChecks.map((c: any) => `${c.label}: ${c.detail}`),
     ...(ctx?.missing ?? []),

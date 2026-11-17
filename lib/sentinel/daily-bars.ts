@@ -8,11 +8,12 @@ const CACHE_MS=6*3600000;
  * Since 2026-11-13 the hourly case assessment also uses it, only when a case has no eligible live quote
  * (a 10-day window, at most 6 small requests per run); see last-close.ts.
  */
-export async function archivedDailyBars(ticker:string,start:string,end:string,c:{ALPACA_DATA_KEY_ID:string;ALPACA_DATA_SECRET:string}){
- const db=database(),source=`alpaca:iex:daily-bars:${ticker}:${start}:${end}`;
+export async function archivedDailyBars(ticker:string,start:string,end:string,c:{ALPACA_DATA_KEY_ID:string;ALPACA_DATA_SECRET:string},adjustment:'all'|'raw'|'split'='all'){
+ // 'all' keeps its original source key, so existing archives are reused; the split check (2026-11-16) also asks for 'raw' and 'split'.
+ const db=database(),source=`alpaca:iex:daily-bars:${ticker}:${start}:${end}`+(adjustment==='all'?'':':'+adjustment);
  const state=await db.prepare('SELECT last_good_at,raw_event_id FROM source_state WHERE source=?').bind(source).first<{last_good_at:string|null;raw_event_id:string|null}>();
  if(state?.last_good_at&&state.raw_event_id&&Date.now()-Date.parse(state.last_good_at)<CACHE_MS){const raw=await db.prepare('SELECT id,fetched_at,payload FROM raw_event WHERE id=?').bind(state.raw_event_id).first<{id:string;fetched_at:string;payload:string}>();if(raw)return {payload:JSON.parse(raw.payload),rawId:raw.id,fetchedAt:raw.fetched_at};}
- const params=new URLSearchParams({timeframe:'1Day',start,end,limit:'1000',adjustment:'all',feed:'iex',sort:'asc'});
+ const params=new URLSearchParams({timeframe:'1Day',start,end,limit:'1000',adjustment,feed:'iex',sort:'asc'});
  let response:Response;try{response=await fetch('https://data.alpaca.markets/v2/stocks/'+encodeURIComponent(ticker)+'/bars?'+params,{headers:{'APCA-API-KEY-ID':c.ALPACA_DATA_KEY_ID,'APCA-API-SECRET-KEY':c.ALPACA_DATA_SECRET,Accept:'application/json'},redirect:'manual',signal:AbortSignal.timeout(10000)});}catch{throw new Error('The price source could not be reached.');}
  if(!response.ok)throw new Error(response.status===429?'The price source is rate-limiting; try again in a minute.':`The price source returned HTTP ${response.status}.`);
  const text=await response.text();if(text.length>300000)throw new Error('The price response was too large.');

@@ -21,7 +21,12 @@ export const TAG_LISTS:Record<string,Record<string,string[]>>={
   debt_combined:['DebtLongtermAndShorttermCombinedAmount','LongTermDebt'],
   short_term_borrowings:['ShortTermBorrowings','LineOfCredit','CommercialPaper']},
 };
-export type TagListId=typeof TAG_LIST_V1|typeof TAG_LIST_V2;
+/** `xbrl-tags-v3` (2026-11-16) = v2 plus claims ranking with or ahead of common shareholders, as balance-sheet values. */
+export const TAG_LIST_V3='xbrl-tags-v3';
+TAG_LISTS[TAG_LIST_V3]={...TAG_LISTS[TAG_LIST_V2],
+ nci:['MinorityInterest'],nci_redeemable:['RedeemableNoncontrollingInterestEquityCarryingAmount'],
+ preferred:['PreferredStockValue','PreferredStockValueOutstanding']};
+export type TagListId=typeof TAG_LIST_V1|typeof TAG_LIST_V2|'xbrl-tags-v3';
 const listOf=(id:string)=>{const l=TAG_LISTS[id];if(!l)throw new Error('Unknown tag list '+id);return l;};
 const KNOWN=new Map<string,Set<string>>();for(const l of Object.values(TAG_LISTS))for(const [m,t] of Object.entries(l))KNOWN.set(m,new Set([...(KNOWN.get(m)??[]),...t]));
 /** A fact is left out only when its tag belongs to another tag list and not to this one (so a v2-only tag never reaches a v1 figure). */
@@ -36,32 +41,50 @@ export function parseFacts(data:any,entity:string,raw:string,recorded:string):Fi
  for(const e of rows){if(!day(e.end)||!day(e.filed)||e.start&&!day(e.start)||typeof e.val!=='number'||!Number.isFinite(e.val)||!/^\d{10}-\d{2}-\d{6}$/.test(e.accn)||!['10-K','10-K/A','10-Q','10-Q/A','20-F','20-F/A','40-F','40-F/A'].includes(e.form))continue;
  out.push({id:[entity,tag,unit,e.start||'',e.end,e.accn].join(':'),entity_id:entity,metric,source_tag:tag,value:e.val,unit,period_start:e.start||'',period_end:e.end,fiscal_year:Number.isInteger(e.fy)?e.fy:null,fiscal_period:e.fp||null,form:e.form,known_from:e.filed+'T23:59:59.999Z',filed:e.filed,accession:e.accn,raw_event_id:raw,recorded_at:recorded});
  }}
- out.push(...parseShareCounts(data,entity,raw,recorded));return out;
+ out.push(...parseShareCounts(data,entity,raw,recorded),...unreadableClaims(data,entity,raw,recorded));return out;
 }
 /**
  * Cover-page share count (dei:EntityCommonStockSharesOutstanding), metric `shares_outstanding` (2026-11-16).
  * An instant fact: `period_end` is the cover-page date, `period_start` is empty, `known_from` is the filing date.
- * More than one value in the same filing, or on the same cover date, means several share classes (or an unresolved
- * conflict): the values are NOT summed and no share count is emitted. One marker fact `shares_outstanding_multiclass`
- * (value = how many values were reported, unit `classes`) is emitted instead, so a reader can say "multi-class:
- * per-share unavailable" rather than nothing. Not part of TAGS, so `derive` and investment-case-v1 are unchanged.
+ * Several share classes = more than one distinct value on the SAME cover date inside ONE filing: the values are NOT
+ * summed and one marker fact `shares_outstanding_multiclass` (value = how many values, unit `classes`) is emitted instead.
+ * An amended filing (10-K/A, 10-Q/A) is a separate filing: it repeats or corrects the count, so a different value on the
+ * same date in another filing is a revision (the most recently filed wins in latestShareCount), never a second class.
+ * A filing that reports one value on each of two dates (an amendment repeating the original cover date) is not
+ * multi-class either; each date becomes its own fact. Not part of TAGS, so `derive` and investment-case-v1 are unchanged.
  */
+/**
+ * Claim tags (noncontrolling interests, preferred stock) that are present in the company's file but cannot be read
+ * as US dollars: one marker fact `claim_unreadable` per tag and unit (value = number of rows, unit = the file's unit),
+ * dated by the latest valid row, so a reader can say "reported but could not be read" instead of "not reported".
+ */
+export const CLAIM_TAG_LIST=['MinorityInterest','RedeemableNoncontrollingInterestEquityCarryingAmount','PreferredStockValue','PreferredStockValueOutstanding'];
+export function unreadableClaims(data:any,entity:string,raw:string,recorded:string):FinancialFact[]{
+ const out:FinancialFact[]=[];
+ for(const tag of CLAIM_TAG_LIST)for(const [unit,rows] of Object.entries(data?.facts?.['us-gaap']?.[tag]?.units||{})){
+  if(unit==='USD'||!Array.isArray(rows))continue;
+  const valid=(rows as any[]).filter(e=>day(e?.end)&&day(e?.filed)&&/^\d{10}-\d{2}-\d{6}$/.test(e?.accn)).sort((a,b)=>a.filed.localeCompare(b.filed)||a.end.localeCompare(b.end));
+  const last=valid.at(-1);if(!last)continue;
+  out.push({id:[entity,tag+'#unreadable',unit,'',last.end,last.accn].join(':'),entity_id:entity,metric:'claim_unreadable',source_tag:tag,value:rows.length,unit,period_start:'',period_end:last.end,fiscal_year:Number.isInteger(last.fy)?last.fy:null,fiscal_period:last.fp||null,form:String(last.form||''),known_from:last.filed+'T23:59:59.999Z',filed:last.filed,accession:last.accn,raw_event_id:raw,recorded_at:recorded});
+ }
+ return out;
+}
 export const SHARES_TAG='EntityCommonStockSharesOutstanding';
 export function parseShareCounts(data:any,entity:string,raw:string,recorded:string):FinancialFact[]{
  const rows=data?.facts?.dei?.[SHARES_TAG]?.units?.shares;if(!Array.isArray(rows))return [];
  const ok=rows.filter((e:any)=>day(e?.end)&&day(e?.filed)&&typeof e.val==='number'&&Number.isFinite(e.val)&&e.val>0&&/^\d{10}-\d{2}-\d{6}$/.test(e.accn)&&['10-K','10-K/A','10-Q','10-Q/A','20-F','20-F/A','40-F','40-F/A'].includes(e.form));
- const byFiling=new Map<string,Set<string>>(),byDate=new Map<string,Set<number>>();
- for(const e of ok){byFiling.set(e.accn,(byFiling.get(e.accn)??new Set()).add(e.end+'|'+e.val));byDate.set(e.end,(byDate.get(e.end)??new Set()).add(e.val));}
+ const perFilingDate=new Map<string,Set<number>>();
+ for(const e of ok){const k=e.accn+'|'+e.end;perFilingDate.set(k,(perFilingDate.get(k)??new Set()).add(e.val));}
  const out:FinancialFact[]=[],seen=new Set<string>();
  for(const e of ok){
-  const multi=Math.max(byFiling.get(e.accn)!.size,byDate.get(e.end)!.size),base={entity_id:entity,period_start:'',period_end:e.end,fiscal_year:Number.isInteger(e.fy)?e.fy:null,fiscal_period:e.fp||null,form:e.form,known_from:e.filed+'T23:59:59.999Z',filed:e.filed,accession:e.accn,raw_event_id:raw,recorded_at:recorded};
+  const multi=perFilingDate.get(e.accn+'|'+e.end)!.size,base={entity_id:entity,period_start:'',period_end:e.end,fiscal_year:Number.isInteger(e.fy)?e.fy:null,fiscal_period:e.fp||null,form:e.form,known_from:e.filed+'T23:59:59.999Z',filed:e.filed,accession:e.accn,raw_event_id:raw,recorded_at:recorded};
   const f:FinancialFact=multi>1?{...base,id:[entity,SHARES_TAG+'#classes','classes','',e.end,e.accn].join(':'),metric:'shares_outstanding_multiclass',source_tag:SHARES_TAG+'#classes',value:multi,unit:'classes'}
    :{...base,id:[entity,SHARES_TAG,'shares','',e.end,e.accn].join(':'),metric:'shares_outstanding',source_tag:SHARES_TAG,value:e.val,unit:'shares'};
   if(!seen.has(f.id)){seen.add(f.id);out.push(f);}
  }
  return out;
 }
-/** The share count as known at `asOf`: the fact from the most recently filed report (then the latest cover date). A multi-class marker wins over a count from the same or an earlier filing. */
+/** The share count as known at `asOf`: the fact from the most recently filed report (then the latest cover date). A multi-class marker wins over a count from the same filing and date. */
 export function latestShareCount(rows:FinancialFact[],asOf:string,recordedAsOf?:string){
  const mine=rows.filter(f=>(f.metric==='shares_outstanding'||f.metric==='shares_outstanding_multiclass')&&f.known_from<=asOf&&(!recordedAsOf||f.recorded_at<=recordedAsOf));
  if(!mine.length)return null;

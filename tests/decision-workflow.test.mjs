@@ -21,7 +21,7 @@ function company({cfo=[90,100,110,120,130],capex=[30,30,30,30,30],debtNC=100,deb
  return {cik:1,facts:{'us-gaap':us,dei}};
 }
 const asOf='2026-03-02T15:00:00.000Z';
-const build=(data,over={})=>{const facts=parseFacts(data,'sec:0000000001','raw-1','2026-02-16T00:00:00.000Z');return {symbol:'FIX',asOf,sic:'3570',figures:derive(facts,asOf),shareFact:latestShareCount(facts,asOf),price:{value:50,at:'2026-02-27T21:00:00.000Z',basis:'last_close',source:'IEX daily close 2026-02-27',rawEventId:'bars-1'},...over};};
+const build=(data,over={})=>{const facts=parseFacts(data,'sec:0000000001','raw-1','2026-02-16T00:00:00.000Z');return {symbol:'FIX',asOf,sic:'3570',figures:derive(facts,asOf),shareFact:latestShareCount(facts,asOf),price:{value:50,at:'2026-02-27T21:00:00.000Z',basis:'last_close',source:'IEX daily close 2026-02-27',rawEventId:'bars-1'},split:{state:'none',coverSession:'2026-01-30',priceSession:'2026-02-27',source:'fixture'},...over};};
 
 test('3A: cover-page share count is parsed from dei with the filing date as known_from; investment figures are unchanged',()=>{
  const data=company({shares:[[2024,'2025-01-31',22_000_000],[2025,'2026-01-31',23_047_714]]}),facts=parseFacts(data,'sec:0000000001','raw-1','2026-02-16T00:00:00.000Z');
@@ -38,7 +38,7 @@ test('3A: several share counts in one filing or on one date are never summed: mu
  const data=company({shares:[[2025,'2026-01-31',300_000_000],[2025,'2026-01-31',45_000_000]]}),facts=parseFacts(data,'sec:0000000001','raw-1','2026-02-16T00:00:00.000Z');
  assert.equal(facts.filter(f=>f.metric==='shares_outstanding').length,0);
  const m=facts.filter(f=>f.metric==='shares_outstanding_multiclass');assert.equal(m.length,1);assert.equal(m[0].value,2);assert.equal(m[0].unit,'classes');
- const r=impliedExpectations(build(data));assert.equal(r.status,'unavailable');assert.match(r.missing.join(' '),/Multi-class: per-share unavailable/);assert.match(r.missing.join(' '),/not summed/);
+ const r=impliedExpectations(build(data));assert.equal(r.status,'unavailable');assert.match(r.missing.join(' '),/Unavailable: share classes/);assert.match(r.missing.join(' '),/not summed/);
  // A later single-class filing after an earlier multi-class one: the latest filing decides.
  const mixed=company({shares:[[2024,'2025-01-31',300_000_000],[2024,'2025-01-31',45_000_000],[2025,'2026-01-31',23_047_714]]});assert.equal(impliedExpectations(build(mixed)).status,'computed');
  // Invalid rows are dropped.
@@ -64,7 +64,7 @@ test('3B: hand-calculated fixture. Price $50 × 23,047,714 shares; cash flow $10
  assert.ok(Math.abs(cell(.12,.02).growth-r.implied.growth)<1e-12);assert.ok(cell(.14,.02).growth>cell(.12,.02).growth&&cell(.12,.02).growth>cell(.10,.02).growth);assert.ok(cell(.12,.01).growth>cell(.12,.03).growth);
  // Equity basis, net debt as context only, caveats never shown as clear.
  assert.equal(r.basis.id,'equity');assert.equal(r.netDebtContext.value,70e6);assert.match(r.netDebtContext.note,/Not subtracted/);assert.equal(r.leverage.state,'ok');
- assert.deepEqual(r.caveats.filter(c=>c.state==='not_checked').map(c=>c.id),['nci','preferred']);assert.ok(r.caveats.some(c=>c.id==='sbc')&&r.caveats.some(c=>c.id==='borrowing'));
+ assert.deepEqual(r.caveats.filter(c=>c.state==='not_checked').map(c=>c.id),[]);assert.deepEqual(['nci_checked','preferred_checked'].map(id=>r.caveats.find(c=>c.id===id).text),['Noncontrolling interests: not reported in the company\u2019s filings for 2025-12-31.','Preferred stock: not reported in the company\u2019s filings for 2025-12-31.']);assert.ok(r.caveats.some(c=>c.id==='sbc')&&r.caveats.some(c=>c.id==='borrowing'));
  assert.equal(r.opportunity.status,'not_established');
  // History beside it: the company's own reported cash flow, never a forecast.
  assert.deepEqual(r.history.rows.map(h=>h.value/1e6),[60,70,80,90,100]);assert.ok(Math.abs(r.history.rows[4].changePct-100/90*100+100)<1e-9);assert.equal(r.history.rows[0].changePct,null);assert.match(r.history.note,/Not a forecast/);
@@ -258,7 +258,7 @@ test('SEC read states are separate: not loaded, read failed (message kept), load
  const old=F.impliedExpectations({...base,sec:{state:'loaded',parserCurrent:false,tagList:'xbrl-tags-v2'}});assert.match(old.missing[0],/^Share count not loaded yet: this company.s SEC data was stored before Sentinel read cover-page share counts\. It loads at the next SEC refresh, or with .Load share counts. below\.$/);assert.equal(old.canLoadShareCounts,true);
  const none=F.impliedExpectations({...base,sec:{state:'loaded',parserCurrent:true,tagList:'xbrl-tags-v2'}});assert.match(none.missing[0],/^Official share count: the company.s filings report no cover-page count/);assert.equal(none.canLoadShareCounts,false);
  const cfOld=F.impliedExpectations({...build(company({cfo:[90,100,110,120,20]})),sec:{state:'loaded',parserCurrent:false,tagList:'xbrl-tags-v2'}});assert.match(cfOld.missing.join(' '),/stored before the wider tag list \(xbrl-tags-v2\)/);
- assert.equal(F.IMPLIED_VERSION,'implied-expectations-v2');
+ assert.equal(F.IMPLIED_VERSION,'implied-expectations-v3');
  for(const x of [nl,fl,old,none,cfOld])assert.ok(!BANNED.test(JSON.stringify(x)));
 });
 
@@ -272,8 +272,9 @@ test('ADR: a share count from a 20-F or 40-F makes the result unavailable: ADR r
 });
 
 test('checks not run are listed in one visible line',()=>{
- assert.equal(F.impliedExpectations(build(company())).notRun.text,'Checks not run: noncontrolling interests, preferred stock.');
- const r=F.impliedExpectations(build(company({debtNC:null}),{sic:null}));assert.equal(r.notRun.text,'Checks not run: noncontrolling interests, preferred stock, company type (no industry code), debt (not tagged).');assert.deepEqual(r.notRun.ids,['nci','preferred','company_type','leverage']);
+ assert.equal(F.impliedExpectations(build(company())).notRun.text,null,'nothing reported is "not reported", not a check that was not run');
+ assert.equal(F.impliedExpectations({...build(company()),sec:{state:'loaded',parserCurrent:false,tagList:'xbrl-tags-v3'}}).notRun.text,'Checks not run: noncontrolling interests, preferred stock.','read before the parser: not run');
+ const r=F.impliedExpectations(build(company({debtNC:null}),{sic:null}));assert.equal(r.notRun.text,'Checks not run: company type (no industry code), debt (not tagged).');assert.deepEqual(r.notRun.ids,['company_type','leverage']);
  assert.ok(!BANNED.test(r.notRun.text));
 });
 
