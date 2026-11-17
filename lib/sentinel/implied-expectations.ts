@@ -17,7 +17,37 @@
 import type { Figure, FinancialFact } from './financial';
 import { cashflowScenarios, DCF_ASSUMPTIONS } from './cashflow-scenarios';
 
-export const IMPLIED_VERSION = 'implied-expectations-v2'; // v2 (2026-11-16): xbrl-tags-v2 figures, SEC load state, ADR rule, checks-not-run line
+export const IMPLIED_VERSION = 'implied-expectations-v3'; // v3 (2026-11-16): split check, share-class check, stale share-count block, NCI and preferred limits (xbrl-tags-v3)
+// v2 (2026-11-16): xbrl-tags-v2 figures, SEC load state, ADR rule, checks-not-run line
+export const MAX_SHARE_COUNT_AGE_DAYS = 400; // older than this, the count may predate splits, buybacks or new classes: no market value
+export const MAX_CLAIM_SHARE = 0.10;         // NCI or preferred above ~10% of market value: the headline is held back (provisional)
+/** Stock-split check between the cover-page date and the price date, from IEX closes with no adjustment and with split adjustment only. */
+export type SplitCheck =
+  | { state: 'none'; coverSession: string; priceSession: string; source: string }
+  | { state: 'split'; factor: number; ratio: string; coverSession: string; priceSession: string; source: string }
+  | { state: 'unclear'; factor: number; coverSession: string; priceSession: string; source: string }
+  | { state: 'not_run'; reason: string };
+/**
+ * raw/split-adjusted close ratio on the cover-page session, divided by the same ratio on the price session, is the
+ * split factor between them (1 = no split). A usual split ratio (SPLIT_RATIOS, within 0.5%) adjusts the share count;
+ * anything else is `unclear` and holds the result back. Dividends do not enter: the split-only series has none.
+ */
+/** Split ratios companies use: k-for-1 up to 50, 1-for-k up to 100, and 3-for-2, 5-for-4, 4-for-3, 5-for-2. Anything else is "unclear". */
+export const SPLIT_RATIOS: [number, number][] = [...Array.from({ length: 49 }, (_, k) => [k + 2, 1] as [number, number]), ...Array.from({ length: 99 }, (_, k) => [1, k + 2] as [number, number]), [3, 2], [5, 4], [4, 3], [5, 2]];
+export function splitCheck(raw: Record<string, number> | null, split: Record<string, number> | null, coverDate: string, priceDate: string, source = 'Alpaca IEX daily closes, adjustment raw and split'): SplitCheck {
+  if (!raw || !split) return { state: 'not_run', reason: 'unadjusted and split-adjusted IEX prices could not be read' };
+  const days = Object.keys(raw).filter(d => split[d] > 0 && raw[d] > 0).sort();
+  const on = (d: string) => days.filter(x => x <= d).at(-1) ?? null;
+  const cs = on(coverDate), ps = on(priceDate);
+  if (!cs || (Date.parse(coverDate) - Date.parse(cs)) / DAY > 7) return { state: 'not_run', reason: `no IEX close within 7 days before the cover-page date ${coverDate}` };
+  if (!ps) return { state: 'not_run', reason: 'no IEX close on or before the price date' };
+  const factor = (raw[cs] / split[cs]) / (raw[ps] / split[ps]);
+  if (Math.abs(factor - 1) < 0.005) return { state: 'none', coverSession: cs, priceSession: ps, source };
+  for (const [n, m] of SPLIT_RATIOS) if (Math.abs(n / m / factor - 1) < 0.005) return { state: 'split', factor: n / m, ratio: `${n}-for-${m}`, coverSession: cs, priceSession: ps, source };
+  return { state: 'unclear', factor, coverSession: cs, priceSession: ps, source };
+}
+/** Tickers listed for the same SEC company other than this one (SEC writes BRK-B, IEX BRK.B). */
+export const otherListings = (symbol: string, tickers: string[]) => [...new Set(tickers.map(t => t.toUpperCase().replace(/-/g, '.')))].filter(t => t !== symbol.toUpperCase().replace(/-/g, '.'));
 export const ADR_FORMS = ['20-F', '20-F/A', '40-F', '40-F/A'];
 /** How the company's SEC data was read. `parserCurrent`: the last successful read used the current fact parser (share counts and xbrl-tags-v2). */
 export type SecState = { state: 'loaded'; parserCurrent: boolean; tagList: string } | { state: 'not_loaded' } | { state: 'failed'; error: string };
@@ -29,7 +59,7 @@ export const SEC_MESSAGES = {
   adr: (form: string) => `Unavailable: ADR ratio not stored. The share count comes from a ${form}, which counts the company\u2019s ordinary shares; how many of them one US-listed share represents is not stored, so the market value cannot be worked out.`,
   olderTags: ' This company\u2019s SEC data was stored before the wider tag list (xbrl-tags-v2); it may load at the next SEC refresh.',
 };
-const NOT_RUN_LABEL: Record<string, string> = { leverage: 'debt (not tagged)', nci: 'noncontrolling interests', preferred: 'preferred stock', company_type: 'company type (no industry code)' };
+const NOT_RUN_LABEL: Record<string, string> = { leverage: 'debt (not tagged)', nci: 'noncontrolling interests', preferred: 'preferred stock', company_type: 'company type (no industry code)', share_classes: 'share classes', splits: 'stock splits' };
 export const GROWTH_RANGE = Object.freeze({ min: -0.30, max: 0.40 });
 export const SENSITIVITY = Object.freeze({ discount: [0.10, 0.12, 0.14], terminalGrowth: [0.01, 0.02, 0.03] });
 export const MAX_DEBT_TO_OCF = 4;          // the investment-case debt threshold (provisional)
@@ -83,6 +113,8 @@ export type ImpliedInput = {
   shareFact: FinancialFact | null;   // latestShareCount(...) or null
   price: PriceInput;
   sec?: SecState;   // absent = loaded with the current parser (pure tests and offline scripts)
+  split?: SplitCheck;      // absent = not run (the result is held back)
+  otherTickers?: string[]; // other listings of the same SEC company (from otherListings)
 };
 
 export function impliedExpectations(i: ImpliedInput) {
@@ -92,8 +124,6 @@ export function impliedExpectations(i: ImpliedInput) {
   const missing: string[] = [], caveats: { id: string; state: 'not_checked' | 'note'; text: string }[] = [
     { id: 'sbc', state: 'note', text: 'Share-based compensation is not deducted from the cash flow.' },
     { id: 'borrowing', state: 'note', text: 'Net borrowing and repayment are not modelled.' },
-    { id: 'nci', state: 'not_checked', text: 'Noncontrolling interests: not checked.' },
-    { id: 'preferred', state: 'not_checked', text: 'Preferred stock: not checked.' },
   ];
   const now = Date.parse(i.asOf), sec: SecState = i.sec ?? { state: 'loaded', parserCurrent: true, tagList: 'xbrl-tags-v2' };
   if (sec.state === 'not_loaded') missing.push(SEC_MESSAGES.notLoaded);
@@ -112,11 +142,19 @@ export function impliedExpectations(i: ImpliedInput) {
   if (!secOk) { /* the SEC reason above covers it */ }
   else if (!sf) missing.push(current ? SEC_MESSAGES.shareNotReported : SEC_MESSAGES.shareNotLoaded);
   else if (ADR_FORMS.includes(sf.form)) missing.push(SEC_MESSAGES.adr(sf.form));
-  else if (sf.metric === 'shares_outstanding_multiclass') missing.push(`Multi-class: per-share unavailable. The filing of ${sf.filed} reports ${sf.value} share counts; they are not summed.`);
+  else if (sf.metric === 'shares_outstanding_multiclass') { missing.push(`Multi-class: per-share unavailable. The filing of ${sf.filed} reports ${sf.value} share counts; they are not summed.`); caveats.push({ id: 'share_classes', state: 'not_checked', text: 'Share classes: not checked. Several share counts are reported and their prices and conversion ratios are not stored, so they are not summed.' }); }
+  else if (Math.floor((now - Date.parse(sf.period_end + 'T00:00:00Z')) / DAY) > MAX_SHARE_COUNT_AGE_DAYS) missing.push(`Share count too old: the latest cover-page count is from ${sf.period_end} (${sf.form} filed ${sf.filed}), more than ${MAX_SHARE_COUNT_AGE_DAYS} days before the price. Splits, buybacks or new share classes since then would make the market value wrong.`);
   else {
     const age = Math.floor((now - Date.parse(sf.period_end + 'T00:00:00Z')) / DAY);
     shares = { value: sf.value, coverDate: sf.period_end, ageDays: age, stale: age > SHARE_COUNT_STALE_DAYS, source: ref(sf) };
     if (shares.stale) caveats.push({ id: 'share_count_age', state: 'note', text: `The share count is ${age} days old (cover date ${sf.period_end}); buybacks or new shares since then are not reflected.` });
+  }
+
+  // Share classes: another listing of the same SEC company may be another class with its own count and economic weight.
+  const others = i.otherTickers ?? [];
+  if (secOk && others.length) {
+    missing.push(`Share classes: this SEC company also lists ${others.join(', ')}. The cover-page count may cover only some classes, and classes can carry different economic weight, so the market value cannot be summed without each class’s price and conversion ratio.`);
+    if (!caveats.some(c => c.id === 'share_classes')) caveats.push({ id: 'share_classes', state: 'not_checked', text: `Share classes: not checked (${others.join(', ')} also listed).` });
   }
 
   // Price
@@ -126,6 +164,15 @@ export function impliedExpectations(i: ImpliedInput) {
     const age = (now - Date.parse(i.price.at)) / DAY;
     if (age < 0 || age > MAX_PRICE_AGE_DAYS) missing.push(`Stale price: the latest price is from ${i.price.at.slice(0, 10)}, more than ${MAX_PRICE_AGE_DAYS} days before this calculation.`);
     else price = { ...i.price, ageDays: Math.floor(age) };
+  }
+
+  // Stock splits between the cover-page date and the price date: adjust a clean split, hold back anything else.
+  const split: SplitCheck = i.split ?? { state: 'not_run', reason: 'not provided' };
+  let splitFactor = 1;
+  if (shares && price) {
+    if (split.state === 'not_run') { missing.push(`Split check not run: ${split.reason}. Without it a share count from before a split could be mixed with a price from after it.`); caveats.push({ id: 'splits', state: 'not_checked', text: 'Stock splits: not checked.' }); }
+    else if (split.state === 'unclear') missing.push(`Split check: the price series changed by a factor of ${split.factor.toFixed(3)} between ${split.coverSession} and ${split.priceSession}, which is not a clean split ratio. The share count cannot be put on the same basis as the price.`);
+    else if (split.state === 'split') { splitFactor = split.factor; caveats.push({ id: 'split_adjusted', state: 'note', text: `Share count adjusted for a ${split.ratio} split between ${split.coverSession} and ${split.priceSession} (${shares.value.toLocaleString('en-US')} × ${split.factor} = ${Math.round(shares.value * split.factor).toLocaleString('en-US')}), from ${split.source}.` }); }
   }
 
   // Base cash flow: the same validity checks as the cash-flow scenarios (period, currency, filing, age, sign).
@@ -147,8 +194,29 @@ export function impliedExpectations(i: ImpliedInput) {
     }
   }
 
+  // Claims that rank with or ahead of common shareholders (xbrl-tags-v3). The cash flow is consolidated, so it includes
+  // what belongs to minority owners and preferred holders. Book values against the market value; above ~10% the headline is held back.
+  const mvForClaims = shares && price ? price.value * shares.value * splitFactor : null;
+  const claims: Record<string, { value: number | null; periodEnd: string | null; share: number | null; state: string }> = {};
+  const claimCheck = (id: 'nci' | 'preferred', parts: string[], label: string, subject: string, why: string) => {
+    const at = cf.status === 'illustrative' ? cf.periodEnd : null, found = at ? parts.map(m => fig(i.figures, m, at)).filter(Boolean) as Figure[] : [];
+    if (!at) { caveats.push({ id, state: 'not_checked', text: `${label}: not checked (no annual cash flow period).` }); claims[id] = { value: null, periodEnd: null, share: null, state: 'not_checked' }; return; }
+    if (!found.length) { caveats.push({ id, state: 'not_checked', text: `${label}: not checked. No supported tag is reported for ${at}, so "none" cannot be told from "untagged".` }); claims[id] = { value: null, periodEnd: at, share: null, state: 'not_checked' }; return; }
+    const value = found.reduce((t, f) => t + f.value!, 0), share = mvForClaims ? value / mvForClaims : null;
+    claims[id] = { value, periodEnd: at, share, state: share === null ? 'reported' : share > MAX_CLAIM_SHARE ? 'too_large' : 'ok' };
+    const amount = Math.abs(value) >= 1e9 ? `$${(value / 1e9).toFixed(2)}B` : `$${(value / 1e6).toFixed(1)}M`;
+    if (value === 0) caveats.push({ id: id + '_checked', state: 'note', text: `${label}: none reported (0 at ${at}).` });
+    else if (share !== null && share > MAX_CLAIM_SHARE) missing.push(`Held back: ${subject} about ${(share * 100).toFixed(0)}% of the market value (book value ${amount} at ${at}). ${why} Until they are valued separately, no figure is shown.`);
+    else caveats.push({ id: id + '_checked', state: 'note', text: `${label}: book value ${amount} at ${at}${share !== null ? `, ${(share * 100).toFixed(1)}% of the market value (limit ${MAX_CLAIM_SHARE * 100}%)` : ''}; included in the cash flow, not deducted.` });
+  };
+  if (secOk) {
+    claimCheck('nci', ['nci', 'nci_redeemable'], 'Noncontrolling interests', 'noncontrolling interests (minority owners in subsidiaries) are', 'The cash flow includes the minority owners’ share, so what the price assumes would not describe these shares.');
+    claimCheck('preferred', ['preferred'], 'Preferred stock', 'preferred stock is', 'Preferred holders are paid before common shareholders, so the cash flow overstates what belongs to these shares.');
+  }
+
   const history = cashFlowHistory(i.figures, i.asOf);
   const common = {
+    split, claims,
     version: IMPLIED_VERSION, symbol: i.symbol, asOf: i.asOf, basis, assumptions, caveats, leverage,
     notRun: (() => { const ids = caveats.filter(c => c.state === 'not_checked').map(c => c.id); return { ids, text: ids.length ? `Checks not run: ${ids.map(x => NOT_RUN_LABEL[x] ?? x).join(', ')}.` : null }; })(),
     sec: sec.state === 'loaded' ? { state: 'loaded', parserCurrent: sec.parserCurrent, tagList: sec.tagList } : sec, canLoadShareCounts: secOk && !current,
@@ -159,12 +227,12 @@ export function impliedExpectations(i: ImpliedInput) {
   };
   if (missing.length || !shares || !price || cf.status !== 'illustrative') return { ...common, status: 'unavailable' as const, missing, inputs: { price, shares, baseCashFlow: cf.status === 'illustrative' ? cf.baseCashFlow : null } };
 
-  const marketValue = price.value * shares.value, base = cf.baseCashFlow;
+  const marketValue = price.value * shares.value * splitFactor, base = cf.baseCashFlow;
   const solved = solveGrowth(marketValue, base, discount, terminalGrowth, years);
   const cell = (d: number, t: number) => { const s = solveGrowth(marketValue, base, d, t, years); return { discount: d, terminalGrowth: t, growth: s.status === 'solved' ? s.growth : null, outside: s.status === 'outside_range' ? s.side : null }; };
   return {
     ...common, status: 'computed' as const, missing: [],
-    marketValue: { value: marketValue, unit: 'USD', method: 'price × cover-page shares outstanding',
+    marketValue: { value: marketValue, unit: 'USD', method: splitFactor === 1 ? 'price × cover-page shares outstanding' : `price × cover-page shares outstanding × ${splitFactor} (split adjustment)`, splitFactor,
       price: { value: price.value, at: price.at, basis: price.basis, source: price.source, rawEventId: price.rawEventId, ageDays: price.ageDays },
       shares: { value: shares.value, coverDate: shares.coverDate, ageDays: shares.ageDays, stale: shares.stale, ...shares.source } },
     baseCashFlow: { value: base, cfo: cf.cfo, capex: cf.capex, unit: 'USD', periodStart: cf.periodStart, periodEnd: cf.periodEnd, filed: cf.filed, accession: cf.accession, rawEventId: cf.rawEventId, method: 'reported operating cash flow minus reported capital expenditure (calculated)' },

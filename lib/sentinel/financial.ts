@@ -21,7 +21,12 @@ export const TAG_LISTS:Record<string,Record<string,string[]>>={
   debt_combined:['DebtLongtermAndShorttermCombinedAmount','LongTermDebt'],
   short_term_borrowings:['ShortTermBorrowings','LineOfCredit','CommercialPaper']},
 };
-export type TagListId=typeof TAG_LIST_V1|typeof TAG_LIST_V2;
+/** `xbrl-tags-v3` (2026-11-16) = v2 plus claims ranking with or ahead of common shareholders, as balance-sheet values. */
+export const TAG_LIST_V3='xbrl-tags-v3';
+TAG_LISTS[TAG_LIST_V3]={...TAG_LISTS[TAG_LIST_V2],
+ nci:['MinorityInterest'],nci_redeemable:['RedeemableNoncontrollingInterestEquityCarryingAmount'],
+ preferred:['PreferredStockValue','PreferredStockValueOutstanding']};
+export type TagListId=typeof TAG_LIST_V1|typeof TAG_LIST_V2|'xbrl-tags-v3';
 const listOf=(id:string)=>{const l=TAG_LISTS[id];if(!l)throw new Error('Unknown tag list '+id);return l;};
 const KNOWN=new Map<string,Set<string>>();for(const l of Object.values(TAG_LISTS))for(const [m,t] of Object.entries(l))KNOWN.set(m,new Set([...(KNOWN.get(m)??[]),...t]));
 /** A fact is left out only when its tag belongs to another tag list and not to this one (so a v2-only tag never reaches a v1 figure). */

@@ -21,7 +21,7 @@ function company({cfo=[90,100,110,120,130],capex=[30,30,30,30,30],debtNC=100,deb
  return {cik:1,facts:{'us-gaap':us,dei}};
 }
 const asOf='2026-03-02T15:00:00.000Z';
-const build=(data,over={})=>{const facts=parseFacts(data,'sec:0000000001','raw-1','2026-02-16T00:00:00.000Z');return {symbol:'FIX',asOf,sic:'3570',figures:derive(facts,asOf),shareFact:latestShareCount(facts,asOf),price:{value:50,at:'2026-02-27T21:00:00.000Z',basis:'last_close',source:'IEX daily close 2026-02-27',rawEventId:'bars-1'},...over};};
+const build=(data,over={})=>{const facts=parseFacts(data,'sec:0000000001','raw-1','2026-02-16T00:00:00.000Z');return {symbol:'FIX',asOf,sic:'3570',figures:derive(facts,asOf),shareFact:latestShareCount(facts,asOf),price:{value:50,at:'2026-02-27T21:00:00.000Z',basis:'last_close',source:'IEX daily close 2026-02-27',rawEventId:'bars-1'},split:{state:'none',coverSession:'2026-01-30',priceSession:'2026-02-27',source:'fixture'},...over};};
 
 test('3A: cover-page share count is parsed from dei with the filing date as known_from; investment figures are unchanged',()=>{
  const data=company({shares:[[2024,'2025-01-31',22_000_000],[2025,'2026-01-31',23_047_714]]}),facts=parseFacts(data,'sec:0000000001','raw-1','2026-02-16T00:00:00.000Z');
@@ -258,7 +258,7 @@ test('SEC read states are separate: not loaded, read failed (message kept), load
  const old=F.impliedExpectations({...base,sec:{state:'loaded',parserCurrent:false,tagList:'xbrl-tags-v2'}});assert.match(old.missing[0],/^Share count not loaded yet: this company.s SEC data was stored before Sentinel read cover-page share counts\. It loads at the next SEC refresh, or with .Load share counts. below\.$/);assert.equal(old.canLoadShareCounts,true);
  const none=F.impliedExpectations({...base,sec:{state:'loaded',parserCurrent:true,tagList:'xbrl-tags-v2'}});assert.match(none.missing[0],/^Official share count: the company.s filings report no cover-page count/);assert.equal(none.canLoadShareCounts,false);
  const cfOld=F.impliedExpectations({...build(company({cfo:[90,100,110,120,20]})),sec:{state:'loaded',parserCurrent:false,tagList:'xbrl-tags-v2'}});assert.match(cfOld.missing.join(' '),/stored before the wider tag list \(xbrl-tags-v2\)/);
- assert.equal(F.IMPLIED_VERSION,'implied-expectations-v2');
+ assert.equal(F.IMPLIED_VERSION,'implied-expectations-v3');
  for(const x of [nl,fl,old,none,cfOld])assert.ok(!BANNED.test(JSON.stringify(x)));
 });
 
@@ -273,7 +273,7 @@ test('ADR: a share count from a 20-F or 40-F makes the result unavailable: ADR r
 
 test('checks not run are listed in one visible line',()=>{
  assert.equal(F.impliedExpectations(build(company())).notRun.text,'Checks not run: noncontrolling interests, preferred stock.');
- const r=F.impliedExpectations(build(company({debtNC:null}),{sic:null}));assert.equal(r.notRun.text,'Checks not run: noncontrolling interests, preferred stock, company type (no industry code), debt (not tagged).');assert.deepEqual(r.notRun.ids,['nci','preferred','company_type','leverage']);
+ const r=F.impliedExpectations(build(company({debtNC:null}),{sic:null}));assert.equal(r.notRun.text,'Checks not run: company type (no industry code), debt (not tagged), noncontrolling interests, preferred stock.');assert.deepEqual(r.notRun.ids,['company_type','leverage','nci','preferred']);
  assert.ok(!BANNED.test(r.notRun.text));
 });
 

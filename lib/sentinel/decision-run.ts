@@ -9,10 +9,10 @@ import {archivedDailyBars} from './daily-bars';
 import {closesOf} from './market-model';
 import {closeFromBars} from './last-close';
 import {closeInstant} from './case-context';
-import {latestShareCount,TAG_LIST_V2,type FinancialFact,type Figure} from './financial';
+import {latestShareCount,TAG_LIST_V3,type FinancialFact,type Figure} from './financial';
 import {practiceState,type PracticeTrade} from './practice';
 import {AUTO_POLICY} from './auto-practice';
-import {impliedExpectations,type PriceInput,type SecState} from './implied-expectations';
+import {impliedExpectations,splitCheck,otherListings,type PriceInput,type SecState,type SplitCheck} from './implied-expectations';
 import {compareDecision,betaFromCloses,type Beta} from './decision-compare';
 import {SNAPSHOT_VERSION,checkpointFor,reviewSnapshot,performance,evaluateCheckpoint,compareShownToSaved,type CheckpointId} from './decision-snapshot';
 
@@ -39,8 +39,8 @@ const record=(m:Map<string,number>)=>Object.fromEntries(m);
 export async function companyFor(owner:string,symbol:string){
  const db=database();
  const row=await db.prepare("SELECT json_extract(body,'$.identity.cik') cik FROM signal_log WHERE owner=? AND kind='discovery_case' AND json_extract(body,'$.symbol')=? AND json_extract(body,'$.identity.cik') IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 1").bind(owner,symbol).first<{cik:string}>();
- if(row?.cik&&/^\d{10}$/.test(String(row.cik)))return db.prepare('SELECT id,cik,name,sic FROM entity WHERE id=?').bind('sec:'+row.cik).first<{id:string;cik:string;name:string;sic:string|null}>();
- return db.prepare("SELECT e.id,e.cik,e.name,e.sic FROM entity e JOIN entity_watch w ON w.entity_id=e.id WHERE w.owner=? AND EXISTS(SELECT 1 FROM json_each(e.tickers) WHERE upper(value)=?) LIMIT 1").bind(owner,symbol).first<{id:string;cik:string;name:string;sic:string|null}>();
+ if(row?.cik&&/^\d{10}$/.test(String(row.cik)))return db.prepare('SELECT id,cik,name,sic,tickers FROM entity WHERE id=?').bind('sec:'+row.cik).first<{id:string;cik:string;name:string;sic:string|null;tickers:string|null}>();
+ return db.prepare("SELECT e.id,e.cik,e.name,e.sic,e.tickers FROM entity e JOIN entity_watch w ON w.entity_id=e.id WHERE w.owner=? AND EXISTS(SELECT 1 FROM json_each(e.tickers) WHERE upper(value)=?) LIMIT 1").bind(owner,symbol).first<{id:string;cik:string;name:string;sic:string|null;tickers:string|null}>();
 }
 /**
  * The company's SEC figures for the decision workflow, read with tag list xbrl-tags-v2. Three outcomes, never merged:
@@ -53,10 +53,10 @@ export async function secFor(owner:string,entityId:string,asOf:string):Promise<S
  try{
   const ok=await db.prepare("SELECT 1 x FROM sec_run WHERE entity_id=? AND status='success' LIMIT 1").bind(entityId).first();
   if(!ok)return {state:'not_loaded'};
-  const file=await companyFile(entityId,asOf,'public',owner,TAG_LIST_V2);
+  const file=await companyFile(entityId,asOf,'public',owner,TAG_LIST_V3);
   const shares=(await db.prepare("SELECT f.* FROM financial_fact f WHERE entity_id=? AND metric IN ('shares_outstanding','shares_outstanding_multiclass') AND known_from<=? AND EXISTS(SELECT 1 FROM sec_run s WHERE s.entity_id=f.entity_id AND s.status='success' AND s.raw_event_id=f.raw_event_id)").bind(entityId,asOf).all<FinancialFact>()).results;
   const marker=await db.prepare('SELECT last_good_at FROM source_state WHERE source=?').bind(parserSource(entityId)).first<{last_good_at:string|null}>();
-  return {state:'loaded',annual:file.figures as Figure[],quarterly:file.quarterlyFigures as Figure[],shareFact:latestShareCount(shares,asOf),lastGoodAt:file.lastGoodAt?String(file.lastGoodAt):null,parserCurrent:!!marker?.last_good_at,tagList:TAG_LIST_V2};
+  return {state:'loaded',annual:file.figures as Figure[],quarterly:file.quarterlyFigures as Figure[],shareFact:latestShareCount(shares,asOf),lastGoodAt:file.lastGoodAt?String(file.lastGoodAt):null,parserCurrent:!!marker?.last_good_at,tagList:TAG_LIST_V3};
  }catch(e){return {state:'failed',error:(e instanceof Error?e.message:'The SEC records could not be read.').slice(0,200)};}
 }
 const secState=(r:SecRead):SecState=>r.state==='loaded'?{state:'loaded',parserCurrent:r.parserCurrent,tagList:r.tagList}:r;
@@ -82,12 +82,27 @@ export async function backfillShareCounts(owner:string,email:string,opts:{symbol
   note:`Up to ${limit} companies per request through the normal SEC ingest. Facts are appended; nothing stored is changed.`};
 }
 
+/**
+ * Split check for one ticker: unadjusted and split-only IEX daily closes from 10 days before the cover-page date to the
+ * price date (two archived requests, reused for 6 hours). Any read failure is `not_run`, which holds the result back.
+ */
+async function splitFor(symbol:string,coverDate:string,b:Bars|{error:string},now:string):Promise<SplitCheck>{
+ const c=creds();if(!c)return {state:'not_run',reason:'market data is not connected'};
+ if('error' in b||!b.last)return {state:'not_run',reason:'no recent IEX close'};
+ const start=ymd(Date.parse(coverDate+'T00:00:00Z')-10*DAY),end=now.slice(0,10),asMap=(p:any)=>{const m:Record<string,number>={};for(const x of closesOf(p,now))m[x[0]]=x[1];return m;};
+ try{const [raw,split]=await Promise.all([archivedDailyBars(symbol,start,end,c,'raw'),archivedDailyBars(symbol,start,end,c,'split')]);
+  return splitCheck(asMap(raw.payload),asMap(split.payload),coverDate,b.last.sessionDate,`Alpaca IEX daily closes, unadjusted and split-adjusted (raw ${raw.rawId}, split ${split.rawId})`);}
+ catch(e){return {state:'not_run',reason:'unadjusted IEX prices could not be read ('+(e instanceof Error?e.message:'error')+')'};}
+}
+
 /** What the price assumes, for one ticker, as of now. Read-only apart from the price archive. */
 export async function impliedFor(owner:string,symbol:string,now=iso()){
  const entity=await companyFor(owner,symbol);if(!entity)return null;
  const sec=await secFor(owner,entity.id,now),b=await dailyBars(symbol,now,400);
  const price:PriceInput='error' in b||!b.last?null:{value:b.last.close,at:b.last.closeAt,basis:'last_close',source:'IEX daily close '+b.last.sessionDate+' (one US exchange)',rawEventId:b.last.rawEventId};
- const ok=loaded(sec),r=impliedExpectations({symbol,asOf:now,sic:entity.sic??null,figures:ok?.annual??[],shareFact:ok?.shareFact??null,price,sec:secState(sec)});
+ const ok=loaded(sec),split=ok?.shareFact&&price?await splitFor(symbol,ok.shareFact.period_end,b,now):undefined;
+ let tickers:string[]=[];try{const t=JSON.parse(entity.tickers??'[]');if(Array.isArray(t))tickers=t.map(String);}catch{}
+ const r=impliedExpectations({symbol,asOf:now,sic:entity.sic??null,figures:ok?.annual??[],shareFact:ok?.shareFact??null,price,sec:secState(sec),split,otherTickers:otherListings(symbol,tickers)});
  return {...r,company:{name:entity.name,cik:entity.cik,sic:entity.sic??null},sources:{secLastGoodAt:ok?.lastGoodAt??null,secRead:sec.state,secError:sec.state==='failed'?sec.error:null,tagList:ok?.tagList??null,priceError:'error' in b?b.error:b.last?null:'No completed IEX daily close in the last 5 days.',priceSessionDate:'error' in b?null:b.last?.sessionDate??null}};
 }
 
