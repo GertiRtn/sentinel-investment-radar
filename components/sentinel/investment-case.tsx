@@ -20,7 +20,7 @@ export function InvestmentCasePanel({ caseId }: { caseId: string }) {
     catch (e: any) { setError(e.message); } finally { setBusy(false); }
   }
   return (
-    <section aria-label="Investment case" className="rounded-3xl border border-border bg-card/60 p-6 text-[13px]">
+    <section aria-label="Investment case" className="company-card text-[13px]">
       <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Investment case</h2><span className="rounded-md bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">Research prototype</span></div>
       {r === undefined ? <p className="text-muted-foreground">Loading…</p> : !r ? <>
         <p className="text-muted-foreground">Not assessed yet. Sentinel checks the business evidence known when this case was assessed and says what it supports. It does not judge the price.</p>
