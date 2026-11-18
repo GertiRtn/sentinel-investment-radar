@@ -208,3 +208,82 @@ body{background:var(--background);color:var(--foreground)}
 .status-explainer{margin:12px 0 4px;color:var(--muted-foreground);font-size:13px}.status-explainer summary{cursor:pointer;color:#9ec4fb}.status-explainer p{max-width:780px;line-height:1.6;margin-top:9px}.following-card{padding:22px;border:1px solid #303640;border-radius:20px;background:#16191f}.following-card .font-semibold{font-size:17px}.following-company-link{display:inline-flex;align-items:center;gap:8px;margin-top:16px;padding:9px 15px;border-radius:999px;background:#2a3039;color:#e9f2ff;font-size:13px;font-weight:650}.following-company-link:hover{background:#39414d}.page-empty{border:1px solid #303640;border-radius:20px;background:#16191f;padding:26px}.page-empty strong{font-size:19px}.page-empty p{margin-top:8px;color:var(--muted-foreground);font-size:14px}
 .practice-page .page-heading{margin-bottom:4px}.practice-page .auto-practice-card,.practice-page .practice-overview,.practice-page .practice-form{border-radius:22px}.practice-page .auto-practice-card{padding:24px;background:linear-gradient(145deg,#1b202a,#16191f)}.practice-page .auto-practice-card h3,.practice-page .practice-form h3{font-size:20px;letter-spacing:-.02em}.practice-page .practice-overview{background:linear-gradient(140deg,#202a37,#16191f 75%)}.practice-page .practice-form input:not([type=range]){min-height:46px;border-radius:12px;font-size:16px}.practice-submit{min-height:48px;background:#f5f6f8;color:#13161b;border-radius:999px}.practice-submit:hover{background:#dce8f8}.practice-mobile-positions{display:none}.practice-page .practice-desktop-table table{min-width:730px}.practice-price-note{color:#a2aab7;font-size:12px;line-height:1.5}
 @media(max-width:700px){.page-intro{margin-top:4px;margin-bottom:24px}.ranked-row{padding:17px;gap:10px}.ranked-pos{width:16px}.ranked-score{min-width:54px;font-size:20px;padding:8px 4px}.ranked-body .text-button{margin-right:10px}.workspace-fold,.raw-feed,.following-card{padding:18px}.practice-page .auto-practice-card{padding:20px}.practice-desktop-table{display:none}.practice-mobile-positions{display:grid;gap:12px}.practice-position{padding:17px;border:1px solid #343b46;background:#1c2129;border-radius:16px}.practice-position-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.practice-position-head strong{font-size:18px}.practice-position-head>span{font-size:19px;font-weight:650}.practice-position-head p{color:#a2aab7;font-size:12px;margin-top:3px}.practice-position dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}.practice-position dt{color:#a2aab7;font-size:12px}.practice-position dd{margin:3px 0 0;font-size:14px;font-weight:600}.practice-position button{margin-top:14px;padding:10px 14px;border:1px solid #485363;border-radius:999px;color:#e7edf7;font-size:13px}}
+
+/* ---- Company page design (ported 2026-11-17 from the Lovable prototype "Signal Scout Investment Desk", commit 7b5ec85,
+   src/styles.css). Presentation only. Scoped to .company-page so no other page changes. ---- */
+@theme inline {
+  --color-investigate: var(--investigate);
+  --color-monitor: var(--monitor);
+  --color-price-up: var(--price-up);
+  --color-price-down: var(--price-down);
+  --color-financial-revenue: var(--financial-revenue);
+  --color-financial-income: var(--financial-income);
+  --color-financial-margin: var(--financial-margin);
+}
+.company-page, .company-tooltip {
+  --background: oklch(0.145 0.003 260);
+  --foreground: oklch(0.96 0.003 260);
+  --card: oklch(0.205 0.005 260);
+  --popover: oklch(0.25 0.006 260);
+  --primary: oklch(0.76 0.10 225);
+  --primary-foreground: oklch(0.17 0.025 225);
+  --secondary: oklch(0.27 0.005 260);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.29 0.006 260);
+  --muted-foreground: oklch(0.73 0.008 260);
+  --accent: oklch(0.29 0.006 260);
+  --accent-foreground: var(--foreground);
+  --border: oklch(0.32 0.005 260);
+  --input: var(--border);
+  --ring: oklch(0.8 0.1 225);
+  --investigate: oklch(0.76 0.10 225);
+  --monitor: oklch(0.8 0.13 75);
+  --price-up: oklch(0.78 0.13 165);
+  --price-down: oklch(0.75 0.15 23);
+  --financial-revenue: oklch(0.66 0.10 240);
+  --financial-income: oklch(0.8 0.045 215);
+  --financial-margin: oklch(0.79 0.09 185);
+}
+.company-page { background: var(--background); color: var(--foreground); }
+.company-tooltip { background: var(--popover); color: var(--foreground); border: 1px solid var(--border); }
+.company-page .chart-tooltip { background: var(--popover); color: var(--foreground); border: 1px solid var(--border); padding: 12px; border-radius: 12px; font-size: 12px; }
+.company-container { max-width: 1440px; margin: 0 auto; padding-left: 64px; padding-right: 64px; }
+.company-topbar { padding: 23px 0; border-bottom: 1px solid var(--border); }
+.company-monogram { width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--secondary); color: var(--investigate); font-size: 25px; font-weight: 500; border: 1px solid var(--border); flex-shrink: 0; }
+.source-chip { display: inline-flex; align-items: center; gap: 7px; border-radius: 6px; background: var(--secondary); padding: 7px 10px; color: var(--muted-foreground); font-size: 11px; }
+.source-chip.stale { color: var(--monitor); }
+.company-grid { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+.company-card { background: var(--card); border: 1px solid var(--border); border-radius: 22px; padding: 26px; }
+.company-page .assessment-card { background: var(--popover); }
+/* The prototype made the aside sticky; the real aside (assessment, investment case, events, positions) is taller than a
+   screen, so sticky would hide its lower half until the end of the page. It scrolls normally. */
+.company-aside { position: static; }
+.company-page .segmented { display: inline-flex; background: var(--background); border: 1px solid var(--border); padding: 3px; border-radius: 10px; }
+.company-page .segmented button { height: 44px; min-width: 50px; padding: 0 12px; border-radius: 7px; color: var(--muted-foreground); font-size: 12px; }
+.company-page .segmented button.selected { background: var(--secondary); color: var(--foreground); }
+.company-page button:focus-visible, .company-page a:focus-visible, .company-page [tabindex]:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
+.price-chart { height: 265px; width: 100%; }
+.financial-chart { height: 245px; width: 100%; }
+.legend-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.figure-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0 18px; }
+.figure-row:last-child { padding-bottom: 0; }
+.figure-row dt { min-height: 44px; display: flex; align-items: center; }
+.unknown-pill { display: inline-block; font-size: 11px; font-weight: 500; padding: 5px 10px; border-radius: 20px; color: var(--muted-foreground); background: var(--muted); }
+.assessment-label { display: inline-block; border-radius: 5px; background: var(--muted); color: var(--investigate); padding: 5px 8px; font-size: 11px; }
+.evidence-chip { display: inline-flex; align-items: center; font-size: 10px; border: 1px solid var(--border); border-radius: 5px; padding: 4px 7px; color: var(--muted-foreground); }
+.evidence-chip.tone-sky { border-color: color-mix(in oklch, var(--investigate) 45%, transparent); color: var(--investigate); }
+.evidence-chip.tone-amber { border-color: color-mix(in oklch, var(--monitor) 45%, transparent); color: var(--monitor); }
+.evidence-chip.tone-red { border-color: color-mix(in oklch, var(--price-down) 45%, transparent); color: var(--price-down); }
+.event-row { padding: 18px 0; }
+.event-row:first-child { padding-top: 0; }
+.event-row:last-child { padding-bottom: 0; }
+.position-chip { font-size: 11px; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; color: var(--muted-foreground); }
+.event-chart-key { position: relative; cursor: help; }
+.event-chart-headline { display: none; position: absolute; bottom: 42px; left: 0; z-index: 3; width: 230px; padding: 12px; background: var(--popover); border: 1px solid var(--border); border-radius: 8px; color: var(--foreground); }
+.event-chart-key:hover .event-chart-headline, .event-chart-key:focus .event-chart-headline { display: block; }
+.company-page .state-box { border: 1px solid var(--border); border-radius: 12px; background: color-mix(in oklch, var(--muted) 50%, transparent); padding: 16px; }
+.company-page .checks-box { border-radius: 8px; background: var(--muted); padding: 8px 12px; font-size: 12px; color: var(--muted-foreground); }
+.company-page .diff-box { border-radius: 8px; background: color-mix(in oklch, var(--monitor) 10%, transparent); padding: 12px; }
+@media (max-width: 1100px) { .company-container { padding-left: 32px; padding-right: 32px; } .company-grid { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 20px; } .company-card { padding: 22px; } }
+@media (max-width: 800px) { .company-container { padding-left: 20px; padding-right: 20px; } .company-grid { grid-template-columns: minmax(0, 1fr); } .company-aside { position: static; } .company-page h1 { font-size: 24px; } .company-card { padding: 20px; } .figure-row { gap: 12px; } .figure-row dd { font-size: 20px; flex-shrink: 0; } .price-chart { height: 240px; } .financial-chart { height: 235px; } }
+@media (prefers-reduced-motion: reduce) { .company-page *, .company-page *::before, .company-page *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
