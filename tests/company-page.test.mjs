@@ -7,7 +7,8 @@ const b=await esbuild.build({entryPoints:['lib/sentinel/company-page.ts'],bundle
 const {buildCompanyPage,statusLabel,keyFigures,financials,priceBlock,filingUrl}=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
 
 // Fixtures only (fictional company). Not market data.
-const fact=(metric,end,value,acc='0000000101-26-000001')=>({metric,value,period_end:end,inputs:[{form:'10-K',filed:end.slice(0,4)+'-12-01',accession:acc}]});
+const TAG={revenue:'Revenues',net_income:'NetIncomeLoss',cfo:'NetCashProvidedByUsedInOperatingActivities',capex:'PaymentsToAcquirePropertyPlantAndEquipment'};
+const fact=(metric,end,value,acc='0000000101-26-000001')=>({metric,value,period_end:end,confidence:'reported',unit:'USD',tagList:'xbrl-tags-v4',inputs:[{form:'10-K',filed:end.slice(0,4)+'-12-01',accession:acc,source_tag:TAG[metric],period_start:end.slice(0,4)+'-01-01',period_end:end,raw_event_id:'raw-'+acc}]});
 const sessions=n=>{const o=[];let t=Date.parse('2025-06-02T12:00:00Z');while(o.length<n){const d=new Date(t);if(d.getUTCDay()%6)o.push(d.toISOString().slice(0,10));t+=86400000;}return o;};
 const DAYS=sessions(280),bars=(f)=>({bars:DAYS.map((d,i)=>({t:d+'T12:00:00Z',c:f(i)}))});
 const kase=(id,over={})=>({id,symbol:'ACME',createdAt:'2026-03-01T15:00:00.000Z',conclusion:'MONITOR',decision:{version:'research-screen-v2'},identity:{cik:'0000000101',name:'Acme Robotics Inc'},

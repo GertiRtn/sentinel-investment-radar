@@ -7,8 +7,9 @@ import { closeInstant } from './case-context';
 import { caseEventMatch } from './event-match';
 import { notChecked, STATE_LABEL } from './event-verify';
 import { caseNewsDirection } from './news-direction';
+import { freeCashFlow } from './free-cash-flow';
 
-export const COMPANY_PAGE_VERSION = 'company-page-v1';
+export const COMPANY_PAGE_VERSION = 'company-page-v2'; // v2 (2026-11-25): free cash flow from freeCashFlow() (capex-tags-v3), shared with the price card
 export const RANGES = { '1M': 21, '6M': 126, '1Y': 252 } as const;
 type Fig = { metric: string; value: number | null; period_end: string; inputs?: any[] };
 
@@ -62,10 +63,13 @@ export function keyFigures(kase: any, figures: Fig[], cik: string | null) {
     return { metric, label, help, value: cur.value, unit: 'USD', periodEnd: cur.period_end, changePct: comparable ? ((cur.value as number) / (prev!.value as number) - 1) * 100 : null,
       changeNote: comparable ? `vs year to ${prev!.period_end}` : prev ? 'No like-for-like change (different period length or a non-positive base).' : 'No earlier year to compare.', source: src(cur, cik), reason: null };
   };
-  const cfo = annualOf(figures, 'cfo'), capex = annualOf(figures, 'capex'), c = cfo.at(-1), k = c ? capex.find(x => x.period_end === c.period_end) : undefined;
-  const fcf = c && k ? { metric: 'fcf', label: 'Free cash flow', help: 'Operating cash flow minus capital spending, both as reported for the same year. Calculated by Sentinel from reported figures.',
-    value: (c.value as number) - (k.value as number), unit: 'USD', periodEnd: c.period_end, changePct: null, changeNote: 'Calculated from reported figures', source: src(c, cik), reason: null }
-    : { metric: 'fcf', label: 'Free cash flow', help: 'Operating cash flow minus capital spending for the same year.', value: null, unit: 'USD', periodEnd: null, changePct: null, changeNote: null, source: null, reason: 'Operating cash flow and capital spending are not both reported for the same year.' };
+  // The one shared function: the price card's base cash flow uses it too, so the two cannot disagree.
+  const f = freeCashFlow(figures as any), help = 'Operating cash flow minus capital spending (purchases of property, plant and equipment), both reported for the same year in the same filing. Calculated by Sentinel.';
+  const provenance = { fcfVersion: f.version, capexTagList: f.capexTagList, tagList: (figures.find(x => x.metric === 'cfo') as any)?.tagList ?? null };
+  const fcf = f.status === 'reported'
+    ? { metric: 'fcf', label: 'Free cash flow', help, value: f.value, unit: 'USD', periodEnd: f.periodEnd, changePct: null, changeNote: `Calculated: operating cash flow minus capital spending (${f.capexTagList})`, reason: null,
+        source: src(figures.find(x => x.metric === 'cfo' && x.period_end === f.periodEnd)!, cik), calculation: { cfo: f.cfo, capex: f.capex, cfoTag: f.cfoTag, capexTag: f.capexTag, accession: f.accession, filed: f.filed }, ...provenance }
+    : { metric: 'fcf', label: 'Free cash flow', help, value: null, unit: 'USD', periodEnd: f.periodEnd, changePct: null, changeNote: null, source: null, reason: f.reason, calculation: null, ...provenance };
   const p = kase?.price;
   const pe = p?.status === 'indicative' && Number.isFinite(p.ratio)
     ? { metric: 'pe', label: 'P/E', help: 'Share price divided by the latest annual diluted earnings per share. Indicative: one exchange’s price, reported annual EPS, share basis not verified.', value: p.ratio, unit: 'x', periodEnd: p.periodEnd ?? null, changePct: null,

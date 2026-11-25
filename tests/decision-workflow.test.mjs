@@ -258,7 +258,7 @@ test('SEC read states are separate: not loaded, read failed (message kept), load
  const old=F.impliedExpectations({...base,sec:{state:'loaded',parserCurrent:false,tagList:'xbrl-tags-v2'}});assert.match(old.missing[0],/^Share count not loaded yet: this company.s SEC data was stored before Sentinel read cover-page share counts\. It loads at the next SEC refresh, or with .Load share counts. below\.$/);assert.equal(old.canLoadShareCounts,true);
  const none=F.impliedExpectations({...base,sec:{state:'loaded',parserCurrent:true,tagList:'xbrl-tags-v2'}});assert.match(none.missing[0],/^Official share count: the company.s filings report no cover-page count/);assert.equal(none.canLoadShareCounts,false);
  const cfOld=F.impliedExpectations({...build(company({cfo:[90,100,110,120,20]})),sec:{state:'loaded',parserCurrent:false,tagList:'xbrl-tags-v2'}});assert.match(cfOld.missing.join(' '),/stored before the wider tag list \(xbrl-tags-v2\)/);
- assert.equal(F.IMPLIED_VERSION,'implied-expectations-v3');
+ assert.equal(F.IMPLIED_VERSION,'implied-expectations-v4');
  for(const x of [nl,fl,old,none,cfOld])assert.ok(!BANNED.test(JSON.stringify(x)));
 });
 

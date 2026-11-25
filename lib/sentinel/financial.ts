@@ -26,7 +26,23 @@ export const TAG_LIST_V3='xbrl-tags-v3';
 TAG_LISTS[TAG_LIST_V3]={...TAG_LISTS[TAG_LIST_V2],
  nci:['MinorityInterest'],nci_redeemable:['RedeemableNoncontrollingInterestEquityCarryingAmount'],
  preferred:['PreferredStockValue','PreferredStockValueOutstanding']};
-export type TagListId=typeof TAG_LIST_V1|typeof TAG_LIST_V2|'xbrl-tags-v3';
+/**
+ * The ONE capital-expenditure tag list for free cash flow (`capex-tags-v3`, 2026-11-25). Free cash flow anywhere in
+ * Sentinel comes from `freeCashFlow()` (free-cash-flow.ts), which accepts capex only under these tags.
+ * Only tags whose SEC definition is purchases of property, plant and equipment. Left out for the founder to decide:
+ * PaymentsToAcquireProductiveAssets (SEC definition also covers software and other intangible assets; EMCOR uses it)
+ * and PaymentsToExploreAndDevelopOilAndGasProperties (covers exploration as well as development).
+ * The list is a separate version from the xbrl tag lists: xbrl-tags-v3 already existed for claims.
+ */
+export const CAPEX_TAG_LIST='capex-tags-v3';
+export const CAPEX_TAGS:readonly string[]=Object.freeze(['PaymentsToAcquirePropertyPlantAndEquipment']);
+export const CAPEX_EXCLUDED:Readonly<Record<string,string>>=Object.freeze({
+ PaymentsToAcquireProductiveAssets:'its SEC definition also covers software and other intangible assets',
+ PaymentsToExploreAndDevelopOilAndGasProperties:'its SEC definition covers exploration as well as development of oil and gas properties'});
+/** `xbrl-tags-v4` (2026-11-25) = v3 with capex taken from CAPEX_TAGS. Read by the company page and the decision workflow. */
+export const TAG_LIST_V4='xbrl-tags-v4';
+TAG_LISTS[TAG_LIST_V4]={...TAG_LISTS[TAG_LIST_V3],capex:[...CAPEX_TAGS]};
+export type TagListId=typeof TAG_LIST_V1|typeof TAG_LIST_V2|'xbrl-tags-v3'|'xbrl-tags-v4';
 const listOf=(id:string)=>{const l=TAG_LISTS[id];if(!l)throw new Error('Unknown tag list '+id);return l;};
 const KNOWN=new Map<string,Set<string>>();for(const l of Object.values(TAG_LISTS))for(const [m,t] of Object.entries(l))KNOWN.set(m,new Set([...(KNOWN.get(m)??[]),...t]));
 /** A fact is left out only when its tag belongs to another tag list and not to this one (so a v2-only tag never reaches a v1 figure). */

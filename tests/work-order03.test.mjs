@@ -361,7 +361,7 @@ await test('company page: read-only, owner-scoped, real records and archived pri
  const days=Array.from({length:120},(_,i)=>new Date(Date.now()-(120-i)*day)).filter(d=>d.getUTCDay()%6).map(d=>d.toISOString().slice(0,10)+'T05:00:00Z');
  for(const [t,f] of [['CPG',i=>20+i*0.05],['SPY',i=>400+i*0.1]])mock.get('https://data.alpaca.markets').intercept({path:new RegExp('^/v2/stocks/'+t+'/bars\\?')}).reply(200,JSON.stringify({bars:days.map((x,i)=>({t:x,c:f(i)})),next_page_token:null}));
  const r=await req('/company-page?symbol=cpg','GET',undefined,owner);assert.equal(r.status,200,JSON.stringify(r.data));const d=r.data;
- assert.equal(d.version,'company-page-v1');assert.equal(d.symbol,'CPG');assert.equal(d.company.name,'Company Page Fixture Corp');
+ assert.equal(d.version,'company-page-v2');assert.equal(d.symbol,'CPG');assert.equal(d.company.name,'Company Page Fixture Corp');
  assert.equal(d.price.status,'ok');assert.ok(d.price.last.close>20);assert.match(d.price.last.basis,/IEX/);assert.ok(d.price.ranges['1M']);
  assert.equal(d.events.length,1);assert.equal(d.events[0].status,'Watch: a rule is not met');assert.equal(d.events[0].verification.state,'not_checked');
  assert.equal(d.assessment.caseId,caseId);assert.equal(d.directionalView.available,false);
@@ -568,9 +568,12 @@ await test('review fixes: share-count backfill through ingest, SEC load states, 
  await seed('BKF',50);
  mock.get('https://data.alpaca.markets').intercept({path:/^\/v2\/stocks\/BKF\/bars\?.*adjustment=(raw|split)/,headers:H}).reply(200,JSON.stringify({bars:dates.map(d=>({t:d+'T05:00:00Z',c:50})),next_page_token:null})).persist();
  await db.prepare("INSERT INTO source_state(source,failures,checked_at,last_good_at) VALUES(?,0,?,?)").bind('sentinel:facts-parser:facts-parser-v3:sec:'+cik,now,now).run();
- const ok=(await req('/implied-expectations?symbol=BKF','GET',undefined,owner)).data;assert.equal(ok.status,'computed',JSON.stringify(ok.missing));assert.equal(ok.baseCashFlow.capex,30e6);assert.equal(ok.tagList,undefined);assert.equal(ok.sources.tagList,'xbrl-tags-v3');assert.equal(ok.implied.growthPct,5);
- assert.equal(ok.notRun.text,'Checks not run: debt (not tagged).');assert.deepEqual([ok.claims.nci.state,ok.claims.preferred.state],['not_reported','not_reported'],'no tag in the filing: "not reported"');
- // The company page (xbrl-tags-v1) still shows no capex for this year: existing figures are not changed.
+ // capex-tags-v3 (2026-11-25): PaymentsToAcquireProductiveAssets is not used (its SEC definition also covers software and
+ // intangible assets), so the price card is unavailable with the "not tagged" note, never a zero capex.
+ const ok=(await req('/implied-expectations?symbol=BKF','GET',undefined,owner)).data;assert.equal(ok.status,'unavailable');assert.equal(ok.sources.tagList,'xbrl-tags-v4');
+ assert.match(ok.missing.join(' '),/Base cash flow: Capital spending is not tagged: no purchase of property, plant and equipment is reported for the year to \d{4}-12-31 under the tags Sentinel uses \(capex-tags-v3\)\. Free cash flow is unknown, not zero\./);
+ assert.equal(ok.baseCashFlow,undefined);assert.equal(ok.implied,undefined);
+ // The stored fact itself is kept: the tag list decides what is used, nothing stored changes.
  const file=await db.prepare("SELECT COUNT(*) n FROM financial_fact WHERE entity_id=? AND metric='capex' AND source_tag='PaymentsToAcquireProductiveAssets'").bind('sec:'+cik).first();assert.equal(file.n,1);
  // 3. No price, no snapshot: a case for a symbol with no daily bars.
  const caseAt=new Date(Date.now()-2*day).toISOString(),nocase='discovery-case:no-price';
@@ -583,7 +586,7 @@ await test('review fixes: share-count backfill through ingest, SEC load states, 
  const bcase='discovery-case:bkf';await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_case',?,?)").bind(bcase,owner,caseAt,'sec:'+cik,JSON.stringify({version:'discovery-case-v2',symbol:'BKF',createdAt:caseAt,status:'complete',conclusion:'INVESTIGATE',decision:{version:'research-screen-v2'},identity:{cik,name:'Backfill Fixture Inc.'},event:{headline:'Backfill Fixture wins contract',publishedAt:caseAt}})).run();
  const rid=crypto.randomUUID(),[s1,s2]=await Promise.all([1,2].map(()=>req('/decision-snapshot','POST',{action:'save',caseId:bcase,requestId:rid,checkpoint:'annual_cash_flow_positive'},owner)));
  assert.equal(s1.status,200,JSON.stringify(s1.data));assert.equal(s2.status,200);assert.equal(s1.data.id,s2.data.id);assert.equal((await db.prepare("SELECT COUNT(*) n FROM signal_log WHERE owner=? AND kind='decision_snapshot'").bind(owner).first()).n,1);
- assert.equal(s1.data.snapshot.impliedExpectations.version,'implied-expectations-v3');assert.match(s1.data.snapshot.checkpoint.condition,/annual filing/);
+ assert.equal(s1.data.snapshot.impliedExpectations.version,'implied-expectations-v4');assert.match(s1.data.snapshot.checkpoint.condition,/annual filing/);
  const reopened=(await req('/decision-snapshot?id='+encodeURIComponent(s1.data.id),'GET',undefined,owner)).data;assert.equal(reopened.review.business.status,'not_yet');assert.match(reopened.review.business.text,/Waiting for: a 10-K filed after/);
  // 5. More than 20 companies: the extras are labelled, never valued.
  const t=new Date().toISOString();for(let k=0;k<21;k++){const sym='H'+String.fromCharCode(65+k)+'X';await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'practice_trade',NULL,?)").bind('bk-trade-'+k,owner,t,JSON.stringify({version:'practice-v2',action:'open',sequence:k+1,positionId:'bk-pos-'+k,symbol:sym,amountCents:1000,quantityMicros:1_000_000,price:{priceCents:1000,at:t,rawEventId:'r',source:'IEX midpoint'},spy:{priceCents:50000,at:t,rawEventId:'r',source:'IEX midpoint'},thesis:'',exitPlan:'',killCondition:'',conviction:50,caseId:null,evidenceScore:null,createdAt:t})).run();}

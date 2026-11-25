@@ -16,8 +16,10 @@
  */
 import type { Figure, FinancialFact } from './financial';
 import { cashflowScenarios, DCF_ASSUMPTIONS } from './cashflow-scenarios';
+import { freeCashFlow, FCF_METHOD } from './free-cash-flow';
 
-export const IMPLIED_VERSION = 'implied-expectations-v3'; // v3 (2026-11-17): split since the share count -> unavailable, share classes -> unavailable, stale share-count block, NCI and preferred states (xbrl-tags-v3)
+export const IMPLIED_VERSION = 'implied-expectations-v4'; // v4 (2026-11-25): base cash flow and history from freeCashFlow() (capex-tags-v3, shared with Key figures).
+// v3 (2026-11-17): split since the share count -> unavailable, share classes -> unavailable, stale share-count block, NCI and preferred states (xbrl-tags-v3)
 // v2 (2026-11-16): xbrl-tags-v2 figures, SEC load state, ADR rule, checks-not-run line
 export const MAX_SHARE_COUNT_AGE_DAYS = 400; // older than this, the count may predate splits, buybacks or new classes: no market value
 export const MAX_CLAIM_SHARE = 0.10;
@@ -97,16 +99,17 @@ const ref = (f: FinancialFact) => ({ tag: f.source_tag, accession: f.accession, 
 export function cashFlowHistory(figures: Figure[], asOf: string) {
   const ends = [...new Set(figures.filter(f => f.metric === 'cfo' && f.confidence === 'reported' && f.value !== null).map(f => f.period_end))].sort().filter(e => e + 'T23:59:59.999Z' <= asOf);
   const rows = ends.map(end => {
-    const cfo = fig(figures, 'cfo', end), capex = fig(figures, 'capex', end);
-    const a = cfo?.inputs[0], b = capex?.inputs[0];
-    const comparable = !!a && !!b && cfo!.confidence === 'reported' && capex!.confidence === 'reported' && !!a.period_start && a.period_start === b.period_start && capex!.value! >= 0;
-    return { periodEnd: end, value: comparable ? cfo!.value! - capex!.value! : null, accession: a?.accession ?? null, filed: a?.filed ?? null };
+    // The same function as Key figures and the base cash flow, so the history cannot use a different capex rule.
+    const f = freeCashFlow(figures, { periodEnd: end });
+    return f.status === 'reported' ? { periodEnd: end, value: f.value, accession: f.accession, filed: f.filed, missingNote: null }
+      : { periodEnd: end, value: null, accession: null, filed: null, missingNote: f.code === 'capex_not_tagged' ? 'capital spending not tagged' : f.code === 'capex_negative' ? 'capital spending reported as negative' : 'CFO or capex not reported for a matching period' };
   }).slice(-5);
   return rows.map((r, i) => {
     const prev = i > 0 ? rows[i - 1] : null, gap = prev ? (Date.parse(r.periodEnd) - Date.parse(prev.periodEnd)) / DAY : null;
     const consecutive = gap !== null && gap >= 330 && gap <= 400;
-    return { ...r, changePct: r.value !== null && prev?.value != null && prev.value > 0 && consecutive ? (r.value / prev.value - 1) * 100 : null,
-      changeNote: r.value === null ? 'CFO or capex not reported for a matching period' : !prev ? 'first period shown' : !consecutive ? 'previous year missing' : prev.value == null ? 'previous year unavailable' : prev.value <= 0 ? 'previous year was zero or negative: no percentage' : null };
+    const { missingNote, ...row } = r;
+    return { ...row, changePct: r.value !== null && prev?.value != null && prev.value > 0 && consecutive ? (r.value / prev.value - 1) * 100 : null,
+      changeNote: r.value === null ? r.missingNote : !prev ? 'first period shown' : !consecutive ? 'previous year missing' : prev.value == null ? 'previous year unavailable' : prev.value <= 0 ? 'previous year was zero or negative: no percentage' : null };
   });
 }
 
@@ -246,7 +249,7 @@ export function impliedExpectations(i: ImpliedInput) {
     marketValue: { value: marketValue, unit: 'USD', method: 'price × cover-page shares outstanding',
       price: { value: price.value, at: price.at, basis: price.basis, source: price.source, rawEventId: price.rawEventId, ageDays: price.ageDays },
       shares: { value: shares.value, coverDate: shares.coverDate, ageDays: shares.ageDays, stale: shares.stale, ...shares.source } },
-    baseCashFlow: { value: base, cfo: cf.cfo, capex: cf.capex, unit: 'USD', periodStart: cf.periodStart, periodEnd: cf.periodEnd, filed: cf.filed, accession: cf.accession, rawEventId: cf.rawEventId, method: 'reported operating cash flow minus reported capital expenditure (calculated)' },
+    baseCashFlow: { value: base, cfo: cf.cfo, capex: cf.capex, unit: 'USD', periodStart: cf.periodStart, periodEnd: cf.periodEnd, filed: cf.filed, accession: cf.accession, rawEventId: cf.rawEventId, capexTag: cf.capexTag, capexTagList: cf.capexTagList, fcfVersion: cf.fcfVersion, method: FCF_METHOD },
     multiple: marketValue / base,
     implied: solved.status === 'solved'
       ? { status: 'solved' as const, growth: solved.growth, growthPct: Math.round(solved.growth * 10000) / 100, repricedValue: presentValue(base, solved.growth, discount, terminalGrowth, years),
