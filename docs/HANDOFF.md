@@ -801,3 +801,22 @@ Measured locally on synthetic data (`signal_log` shaped like production: 6 KB ca
 **Fixed (dca4d65):** the case read kept the oldest 20,000 rows and so would have dropped the newest screen-v2 cases. It now reads screen-v2 cases only, newest first, plus one count of older-screen cases, and says that the oldest are missing if the limit is hit. New tests cover the 401, the bad horizons and the older-screen count. 296/296; `tsc` clean.
 
 **Open for the founder:** whether to add a cooldown, or make the per-case list opt-in (for example `?cases=1`), before the case count grows. Neither is needed at today's volume.
+
+## 2026-11-25 (evening) — Claude Code (Opus): "Load share counts" on stale SEC data; company page layout
+
+**Branch `company-page-share-refresh`, built on #46** (`company-page-design-main`), because #46 rewrites the same panel. PR against main. Merge #46 first; nothing is merged or published.
+
+**1. Missing button (live check, EME).**
+- *Cause:* the button was drawn only inside the "Unavailable" state. EME's calculation completes, but its SEC data predates `facts-parser-v3` ("Checks not run: noncontrolling interests, preferred stock"), and the API already returned `canLoadShareCounts: true`. Main has the same bug.
+- *Fix:* the control sits under "Checks not run" in both states. It shows when `canLoadShareCounts` is true and `sec.parserCurrent` is false, with one line explaining why. It also shows, as before, when the SEC read is missing or failed. The backfill route is unchanged; it already finds a company from the owner's cases when it is not saved.
+
+**Does the hourly run re-read stale companies?**
+- *Saved companies (watchlist):* yes. The filings stage re-reads 5 per run, the longest-unchecked first, within 30 s, through the normal ingest, which writes the current parser marker. Every saved company is reached within about (saved count ÷ 5) hours. It is ordered by the last check, not by parser age.
+- *Companies known only from discovery cases:* no. They are re-read only when a new case about them is assessed and their last discovery read is at least 24 h old. A company with no new news keeps its old read indefinitely.
+- *Proposed, not built:* a parser catch-up step at the end of the filings stage, only when its 30 s cap has not been reached. At most 1 company per hourly run whose parser marker is missing. Chosen from companies with screen-v2 cases in the last 7 days, newest case first. Skip any company with a failed SEC read in the last 6 h. Normal SEC limiter and ingest. That is at most 24 extra company reads a day, about 2 SEC requests each. It changes the hourly run, so it needs the founder's approval and should be checked against `pipeline_run` stage times.
+
+**2. Layout.** #46 already puts "What the price assumes" and "What acting would change" in the main column under Financials, as in the Lovable design. The live Site shows main, which does not have #46 yet. No further change is needed here.
+
+**Screenshots:** `docs/design/company-page-2026-11-25/`, at 1440 and 390 px, 2× density, fictional fixtures (see its README). `scripts/design/screenshots.mjs` takes an optional `SCALE`.
+
+**Verified:** 296/296; `tsc` clean; build OK. **Not verified:** the live Site, and the button against real SEC from the Site.

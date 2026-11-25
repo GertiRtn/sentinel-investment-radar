@@ -33,7 +33,15 @@ export function ImpliedExpectationsPanel({ symbol }: { symbol: string }) {
       const failed = j.results.filter((q: any) => q.status === "failed"); setLoading(failed.length ? failed.map((q: any) => `${q.company}: ${q.message}`).join(" ") : `Loaded ${j.processed} compan${j.processed === 1 ? "y" : "ies"}${j.remaining ? `; ${j.remaining} more to load` : ""}.`); setTick(t => t + 1); }
     catch (e: any) { setLoading(e.message); }
   }
-  const canLoad = r && (r.canLoadShareCounts || r.sec?.state === "not_loaded" || r.sec?.state === "failed");
+  // The SEC data was read before the current fact parser: the calculation may still run, with some checks not run.
+  const stale = !!r && r.canLoadShareCounts === true && r.sec?.state === "loaded" && r.sec.parserCurrent === false;
+  const canLoad = !!r && (stale || r.sec?.state === "not_loaded" || r.sec?.state === "failed");
+  const busy = loading === "Loading SEC data…";
+  const loadControl = canLoad && <div className="mb-5 mt-4">
+    {stale && r.status !== "unavailable" && <p className="mb-2 text-xs text-muted-foreground">This company’s SEC data was read with an older version of the reader. Loading it again lets the checks above run.</p>}
+    <button type="button" onClick={loadShares} disabled={busy} className="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm hover:bg-muted disabled:opacity-50">{r.sec?.state === "failed" ? <><RefreshCw size={16} className={busy ? "animate-spin" : ""} />Try the SEC read again</> : <><Download size={16} />Load share counts</>}</button>
+    {loading && <p className="mt-2 text-[11px] text-muted-foreground" role="status">{loading}</p>}
+  </div>;
   return (
     <section aria-label="What the price assumes" className="company-card">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-semibold">What the price assumes</h2><span className="text-[11px] text-muted-foreground">Illustrative assumptions</span></div>
@@ -44,8 +52,6 @@ export function ImpliedExpectationsPanel({ symbol }: { symbol: string }) {
           <p className="mt-3 text-sm font-medium leading-relaxed">{r.missing[0]}</p>
           {r.missing.length > 1 && <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-relaxed text-muted-foreground">{r.missing.slice(1).map((m: string) => <li key={m}>{m}</li>)}</ul>}
           <p className="mt-2 text-xs text-muted-foreground">The calculation needs every input above. Nothing is estimated in its place.</p>
-          {canLoad && <button type="button" onClick={loadShares} disabled={loading === "Loading SEC data…"} className="mt-4 inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm hover:bg-muted disabled:opacity-50">{r.sec?.state === "failed" ? <><RefreshCw size={16} className={loading === "Loading SEC data…" ? "animate-spin" : ""} />Try the SEC read again</> : <><Download size={16} />Load share counts</>}</button>}
-          {loading && <p className="mt-2 text-[11px] text-muted-foreground" role="status">{loading}</p>}
         </div> : <>
           {r.implied.status === "solved"
             ? <p className="text-[22px] font-semibold leading-snug">{r.implied.text}</p>
@@ -53,6 +59,7 @@ export function ImpliedExpectationsPanel({ symbol }: { symbol: string }) {
           <p className="mt-2 text-[11px] text-muted-foreground">{r.marketValue.price.source} · shares from the cover page of {r.marketValue.shares.form} filed {r.marketValue.shares.filed} · cash flow for the year to {r.baseCashFlow.periodEnd} · as of {day(r.asOf)}</p>
         </>}
         <ChecksNotRun text={r.notRun?.text} />
+        {loadControl}
         {/* Checks that ran and found nothing, or a small amount (e.g. "not reported"), stay in view, not only in the fold. */}
         {r.caveats.filter((c: any) => /_checked$/.test(c.id)).length > 0 && <ul className="mt-2 space-y-0.5 text-[11px] leading-relaxed text-muted-foreground">{r.caveats.filter((c: any) => /_checked$/.test(c.id)).map((c: any) => <li key={c.id}>{c.text}</li>)}</ul>}
         <p className="mt-4 text-xs"><span className="font-medium">Does reality differ from what the price assumes?</span> <span className="text-muted-foreground">{r.opportunity.text}</span></p>

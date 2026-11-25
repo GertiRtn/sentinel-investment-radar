@@ -12,7 +12,7 @@ const states=only.length?only:Object.keys(IMPLIED_STATES);
 const json=(route,body,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 const browser=await chromium.launch();
 for(const [w,h,tag] of [[1440,900,'1440'],[390,844,'390']]){
- const ctx=await browser.newContext({viewport:{width:w,height:h},deviceScaleFactor:1});
+ const ctx=await browser.newContext({viewport:{width:w,height:h},deviceScaleFactor:Number(process.env.SCALE||1)});
  for(const state of states){
   const page=await ctx.newPage();
   await page.route('**/api/**',route=>{
