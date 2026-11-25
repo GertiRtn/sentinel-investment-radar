@@ -763,3 +763,29 @@ It did not have #36 (company page polish) or #37 (investment case).
 - The replay fix, if replay is ever used.
 - Freeze a rule before reading the test set.
 - A prospective virtual experiment compared with all assessed cases.
+
+## 2026-11-25 (later) — Claude Code (Opus): `/api/selection-comparison` review (auth, rate limit, errors)
+
+**Auth:** the shared `identity()`. Signed out gets 401 "Sign in to access your research". All three reads are filtered by the owner. It is a GET, so there is no origin check, the same as every other read-only route. The auth still trusts the Sites platform headers (see "How it runs").
+
+**Rate limit:** none, the same as the other read-only routes (`ideas`, `discovery-funnel`). The only routes with a limit or cooldown are those that call an outside source or a model.
+
+Measured locally on synthetic data (`signal_log` shaped like production: 6 KB case bodies, 4 outcomes and 10 candidates per case):
+
+| Cases | Rows read (case read) | Time | Response |
+|---|---|---|---|
+| 3,000 | about 48,000 | about 0.2 s | 0.95 MB |
+| 20,000 | 320,000 | about 1.1 s | 6.3 MB |
+
+- Rows read equal every row the owner has in `signal_log`: there is no index on `kind`, and known issue 8 says to measure before adding one.
+- The response is mostly the per-case list, which carries the news-direction version for each compared case.
+- Production D1 was not measured.
+
+**Errors:**
+- 400 "horizon must be 5, 20, 60 or 120." for any other value, including 'abc', '', '5.5' and '-5'.
+- 401 as above.
+- Anything else gets the shared 503 text: "The server could not complete this request. Your unsaved input is still on screen." The second sentence is odd for a route with no page, but it is shared by every route.
+
+**Fixed (dca4d65):** the case read kept the oldest 20,000 rows and so would have dropped the newest screen-v2 cases. It now reads screen-v2 cases only, newest first, plus one count of older-screen cases, and says that the oldest are missing if the limit is hit. New tests cover the 401, the bad horizons and the older-screen count. 296/296; `tsc` clean.
+
+**Open for the founder:** whether to add a cooldown, or make the per-case list opt-in (for example `?cases=1`), before the case count grows. Neither is needed at today's volume.
