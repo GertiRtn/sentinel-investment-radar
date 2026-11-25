@@ -820,3 +820,42 @@ Measured locally on synthetic data (`signal_log` shaped like production: 6 KB ca
 **Screenshots:** `docs/design/company-page-2026-11-25/`, at 1440 and 390 px, 2× density, fictional fixtures (see its README). `scripts/design/screenshots.mjs` takes an optional `SCALE`.
 
 **Verified:** 296/296; `tsc` clean; build OK. **Not verified:** the live Site, and the button against real SEC from the Site.
+
+## 2026-11-25 (night) — Claude Code (Opus): free cash flow mismatch, one capex list and one function
+
+**Baseline:** main 0e10571 (#48 merged), 296/296. Branch `fcf-capex-shared`. Not merged, not published.
+
+**Cause:**
+- Key figures read figures with `xbrl-tags-v1` (capex = `PaymentsToAcquirePropertyPlantAndEquipment` only) and subtracted without checking the filing.
+- The price card read `xbrl-tags-v3` (that tag plus `PaymentsToAcquireProductiveAssets` and `PaymentsToExploreAndDevelopOilAndGasProperties`) through `cashflowScenarios`, with stricter checks.
+- The card's history table was a third copy with looser checks.
+- EMCOR reports capex only as ProductiveAssets, so one surface showed Unknown and the other $1.19B.
+
+**Done:**
+- `CAPEX_TAGS` (`capex-tags-v3`) and `xbrl-tags-v4` in `financial.ts`.
+- `freeCashFlow()` (`free-cash-flow-v1`), used by `keyFigures`, `cashflowScenarios`, `impliedExpectations` and `cashFlowHistory`.
+- Provenance on both surfaces: `capexTagList`, `capexTag`, `fcfVersion`, and `tagList` where applicable.
+- Version bumps: `implied-expectations-v4`, `company-page-v2`.
+- Stored snapshots and cases are untouched and keep their old labels.
+- The parser is unchanged: v4 adds no tag that is not already stored.
+
+**Ambiguous tags left out (founder decides):**
+- `PaymentsToAcquireProductiveAssets`: SEC's definition also covers "software, and other intangible assets".
+- `PaymentsToExploreAndDevelopOilAndGasProperties`: covers exploration as well as development.
+- Including either needs a new list version. If ProductiveAssets is included, EMCOR shows $1,189,313,000 on both surfaces.
+
+**EMCOR, read-only from SEC companyfacts fetched 2026-11-25 (10-K 0000105634-26-000025, year to 2025-12-31):**
+- Operating cash flow $1,302,063,000; ProductiveAssets $112,750,000; difference $1,189,313,000.
+- Old paths: Unknown (v1) vs $1,189,313,000 (v3).
+- New: Unknown on both, with the same "Capital spending is not tagged" note.
+- On the Site, EMCOR's price card becomes unavailable until the founder decides.
+
+**Tests:**
+- 296 before, 301 after: `tests/free-cash-flow.test.mjs`, (a) to (d) plus the list itself.
+- Existing assertions changed deliberately:
+  - version strings `implied-expectations-v3` → v4 and `company-page-v1` → v2;
+  - the EMCOR-style Miniflare fixture (BKF) now expects unavailable with the note;
+  - hand-built test figures gained the tag name, period start and confidence that real figures always have.
+- `tsc` clean, build OK.
+
+**Not verified:** the live Site.

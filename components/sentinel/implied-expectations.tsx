@@ -70,7 +70,7 @@ export function ImpliedExpectationsPanel({ symbol }: { symbol: string }) {
               <dt>Market value</dt><dd className="text-foreground">{usd(r.marketValue.value)} = ${r.marketValue.price.value.toFixed(2)} × {r.marketValue.shares.value.toLocaleString("en-US")} shares</dd>
               <dt>Price</dt><dd>{r.marketValue.price.source}{r.marketValue.price.ageDays ? ` · ${r.marketValue.price.ageDays} days old` : ""}</dd>
               <dt>Shares</dt><dd>Cover page {r.marketValue.shares.coverDate} · {r.marketValue.shares.form} filed {r.marketValue.shares.filed} · {r.marketValue.shares.ageDays} days old{r.marketValue.shares.stale ? " (old)" : ""}</dd>
-              <dt>Cash flow</dt><dd>{usd(r.baseCashFlow.value)} = operating cash flow {usd(r.baseCashFlow.cfo)} − capital expenditure {usd(r.baseCashFlow.capex)} (calculated) · year to {r.baseCashFlow.periodEnd} · filed {r.baseCashFlow.filed}</dd>
+              <dt>Cash flow</dt><dd>{usd(r.baseCashFlow.value)} = operating cash flow {usd(r.baseCashFlow.cfo)} − capital expenditure {usd(r.baseCashFlow.capex)} (calculated) · year to {r.baseCashFlow.periodEnd} · filed {r.baseCashFlow.filed}{r.baseCashFlow.capexTag ? ` · capital expenditure tag ${r.baseCashFlow.capexTag} (${r.baseCashFlow.capexTagList})` : ""}</dd>
               <dt>Net debt</dt><dd>{r.netDebtContext.value === null ? r.netDebtContext.note : `${usd(r.netDebtContext.value)} (context only; not part of the calculation)`}</dd>
             </dl>
             <H3>Under other assumptions (implied growth a year)</H3>
