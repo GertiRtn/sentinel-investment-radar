@@ -882,3 +882,32 @@ Measured locally on synthetic data (`signal_log` shaped like production: 6 KB ca
 - The five v3 tests in `tests/free-cash-flow.test.mjs` were replaced by five v4 tests: the list; each tag alone; two tags with different values (first wins, note on both surfaces, never summed; same value gives no note); none (Unknown, "Capital spending is not tagged"); (d) same number on both surfaces.
 - The BKF Miniflare fixture (EMCOR-style) asserted the v3 outcome. It now computes again with ProductiveAssets.
 - `tsc` clean, build OK. **Not verified:** the live Site.
+
+## 2026-11-26 — Claude Code (Opus): label rules v2 (batch 3a)
+
+**Baseline:** main c76189b (#50 merged), 301/301. Branch `label-rules-v2`. Not merged, not published. Rules and versions are in AGENTS.md ("Label rules v2").
+
+**Built:**
+- `event-match-v2` with `partial_name_only`.
+- `analystOpinion()` checked first by `headline-routing-v2`, `news-direction-v2` (`not_company_news`) and `headline-relevance-v4`.
+- The role is labelled "Role from headline wording: not verified".
+- `verified-party-v1` from existing filing checks, shown on the company page.
+- New cases record their label versions, and their routing is recomputed at assessment.
+- Read-time recomputation is labelled "(recomputed with …)".
+- Counts-only dry run `GET /api/label-rules-dry-run`.
+- The funnel gained a "not company news" bucket so its reconciliation holds.
+- The company page shows "not company news" in grey.
+
+**Deviations, for the founder:**
+1. "to Buy/Hold/Sell/…" is narrowed to rating positions, and "analyst estimates/expectations/forecasts/consensus" is an added exception. Literally applied, "to Hold … Conference Call", "to Buy <company>" and "Tops Analyst Estimates" would have become analyst opinions.
+2. The brief's fixture "Microsoft to Acquire Activision" (SEC name "Activision Blizzard") is "Partial name only" with no role under rule 1. It is an affected party only with the full name. Both are tested.
+3. `auto-practice-v1` stays on `event-match-v1`, because the experiment is running. `auto-practice-v2` is not on main.
+4. Verified party stored at assessment is always "Not verified", because filing checks run later and cases are append-only.
+5. Word forms are as written: "analyst", "rating", "upgrade(s)", "downgrade(s)". "Analysts", "ratings" and "upgraded" alone are not matched.
+
+**Tests:**
+- 301 before, 311 after: +9 in `tests/label-rules-v2.test.mjs`, +1 Miniflare dry-run test.
+- Existing assertions changed deliberately: version strings (`event-match-v1`, `headline-relevance-v3`, `news-direction-v1`); stored-v1-kept assertions, which now expect "recomputed with v2"; two v3 role tests, which now call `assessCompanyRelevanceV3`; the funnel's direction object; and the selection-comparison fixture's versions.
+- `tsc` clean, build OK.
+
+**Not verified:** real stored cases (D1 is unreachable from here). Run the dry run on the Site after a deployment.

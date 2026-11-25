@@ -19,7 +19,7 @@ export function funnelCounts(input: { now: string; windowHours: number; queueWin
   const cooling = new Set(input.attempts.filter(a => Date.parse(a.createdAt) > now - COOLDOWN_HOURS * HOUR).map(a => key(a.candidateId, a.symbol)));
   const inWindow = input.candidates.filter(c => { const t = Date.parse(c.createdAt); return t > since && t <= now; });
   const n = { reports: inWindow.length, eligibleReports: 0, notEligibleReports: 0, pairs: 0, eligible: 0, notEligible: 0, assessed: 0, pending: 0, coolingDown: 0, agedOut: 0 };
-  const byConclusion = { meetsRules: 0, watch: 0, notEnoughData: 0 }, byDirection: Record<string, number> = { positive: 0, neutral: 0, mixed: 0, negative: 0 };
+  const byConclusion = { meetsRules: 0, watch: 0, notEnoughData: 0 }, byDirection: Record<string, number> = { positive: 0, neutral: 0, mixed: 0, negative: 0, not_company_news: 0 };
   const rejected = { notEligible: 0, wrongCompany: 0, badOrMixedNews: 0 };
   for (const c of inWindow) {
     const eligible = c.priority === 'topic match', symbols = [...new Set(c.symbols)];
@@ -45,7 +45,7 @@ export function funnelCounts(input: { now: string; windowHours: number; queueWin
     { name: 'Found = eligible + not eligible (report × symbol)', left: n.pairs, right: n.eligible + n.notEligible },
     { name: 'Eligible = assessed + pending + cooling down + aged out', left: n.eligible, right: n.assessed + n.pending + n.coolingDown + n.agedOut },
     { name: 'Assessed = meets rules + watch + not enough data', left: n.assessed, right: byConclusion.meetsRules + byConclusion.watch + byConclusion.notEnoughData },
-    { name: 'Assessed = good + neutral + mixed + bad news', left: n.assessed, right: byDirection.positive + byDirection.neutral + byDirection.mixed + byDirection.negative },
+    { name: 'Assessed = good + neutral + mixed + bad news + not company news', left: n.assessed, right: byDirection.positive + byDirection.neutral + byDirection.mixed + byDirection.negative + byDirection.not_company_news },
   ].map(c => ({ ...c, ok: c.left === c.right, difference: c.left - c.right }));
   return {
     version: FUNNEL_VERSION, asOf: input.now, windowHours: input.windowHours, queueWindowHours: input.queueWindowHours,
@@ -53,7 +53,7 @@ export function funnelCounts(input: { now: string; windowHours: number; queueWin
     deduplicated: { count: null, text: 'Not recorded: a report already stored is skipped at collection and no counter is kept.' },
     eligible: { reports: n.eligibleReports, pairs: n.eligible, definition: 'Reports whose headline matched a research topic ("topic match"). Only these enter the assessment queue.' },
     notEligible: { reports: n.notEligibleReports, pairs: n.notEligible, definition: 'Reports with no topic match ("unclassified"). Stored and shown, never assessed.' },
-    assessed: { pairs: n.assessed, byConclusion, byNewsDirection: { good: byDirection.positive, neutral: byDirection.neutral, mixed: byDirection.mixed, bad: byDirection.negative }, definition: 'Eligible pairs with a research case, by the stored screen conclusion and by news direction. "Not enough data" includes every conclusion other than meets rules or watch.' },
+    assessed: { pairs: n.assessed, byConclusion, byNewsDirection: { good: byDirection.positive, neutral: byDirection.neutral, mixed: byDirection.mixed, bad: byDirection.negative, notCompanyNews: byDirection.not_company_news }, definition: 'Eligible pairs with a research case, by the stored screen conclusion and by news direction. "Not enough data" includes every conclusion other than meets rules or watch.' },
     pending: { pairs: n.pending, definition: `Eligible, no case, not cooling down, first observed within the last ${input.queueWindowHours} hours.` },
     coolingDown: { pairs: n.coolingDown, definition: `Eligible, no case, a failed attempt in the last ${COOLDOWN_HOURS} hours; retried later.` },
     agedOut: { pairs: n.agedOut, definition: `Eligible, no case, first observed more than ${input.queueWindowHours} hours ago: no longer in the queue.` },

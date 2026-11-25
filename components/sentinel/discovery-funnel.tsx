@@ -17,7 +17,7 @@ export function DiscoveryFunnel() {
           <Row label="Deduplicated" value="not recorded" def={d.deduplicated.text} />
           <Row label="Eligible" value={`${d.eligible.reports} · ${d.eligible.pairs}`} def={d.eligible.definition} />
           <Row label="Not eligible" value={`${d.notEligible.reports} · ${d.notEligible.pairs}`} def={d.notEligible.definition} />
-          <Row label="Assessed" value={<>{d.assessed.pairs}<br />meets rules {d.assessed.byConclusion.meetsRules} · watch {d.assessed.byConclusion.watch} · not enough data {d.assessed.byConclusion.notEnoughData}<br />good {d.assessed.byNewsDirection.good} · neutral {d.assessed.byNewsDirection.neutral} · mixed {d.assessed.byNewsDirection.mixed} · bad {d.assessed.byNewsDirection.bad}</>} def={d.assessed.definition} />
+          <Row label="Assessed" value={<>{d.assessed.pairs}<br />meets rules {d.assessed.byConclusion.meetsRules} · watch {d.assessed.byConclusion.watch} · not enough data {d.assessed.byConclusion.notEnoughData}<br />good {d.assessed.byNewsDirection.good} · neutral {d.assessed.byNewsDirection.neutral} · mixed {d.assessed.byNewsDirection.mixed} · bad {d.assessed.byNewsDirection.bad}{typeof d.assessed.byNewsDirection.notCompanyNews === "number" ? <> · not company news {d.assessed.byNewsDirection.notCompanyNews}</> : null}</>} def={d.assessed.definition} />
           <Row label="Pending" value={d.pending.pairs} def={d.pending.definition} />
           <Row label="Cooling down" value={d.coolingDown.pairs} def={d.coolingDown.definition} />
           <Row label="Aged out" value={d.agedOut.pairs} def={d.agedOut.definition} />

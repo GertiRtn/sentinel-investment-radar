@@ -196,7 +196,7 @@ test('3F: funnel counts reconcile on a fixture; rejected reasons are counted sep
  const run=h=>funnelCounts({now,windowHours:h,queueWindowHours:96,capacityPerRun:6,candidates,cases,attempts});
  const w=run(168);
  assert.deepEqual([w.found.reports,w.found.pairs],[6,8]);assert.deepEqual([w.eligible.reports,w.eligible.pairs],[4,6]);assert.deepEqual([w.notEligible.reports,w.notEligible.pairs],[2,2]);
- assert.equal(w.assessed.pairs,3);assert.deepEqual(w.assessed.byConclusion,{meetsRules:1,watch:1,notEnoughData:1});assert.deepEqual(w.assessed.byNewsDirection,{good:1,neutral:1,mixed:0,bad:1});
+ assert.equal(w.assessed.pairs,3);assert.deepEqual(w.assessed.byConclusion,{meetsRules:1,watch:1,notEnoughData:1});assert.deepEqual(w.assessed.byNewsDirection,{good:1,neutral:1,mixed:0,bad:1,notCompanyNews:0});
  assert.deepEqual([w.pending.pairs,w.coolingDown.pairs,w.agedOut.pairs],[1,1,1]);assert.deepEqual({...w.rejected,definition:undefined},{notEligible:2,wrongCompany:1,badOrMixedNews:1,definition:undefined});
  assert.equal(w.deduplicated.count,null);assert.match(w.deduplicated.text,/^Not recorded/);assert.match(w.capacity.text,/up to 6 pairs per run/);
  assert.equal(w.reconciliation.ok,true);assert.ok(w.reconciliation.checks.every(c=>c.left===c.right));

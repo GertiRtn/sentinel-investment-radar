@@ -2,7 +2,7 @@ import {identity,json,failure,ApiError} from '@/lib/sentinel/api';
 import {database,iso} from '@/db/store';
 import {QUEUE_WINDOW_HOURS} from '@/lib/sentinel/discovery-case';
 import {caseNewsDirection} from '@/lib/sentinel/news-direction';
-import {eventMatch,EVENT_MATCH_VERSION} from '@/lib/sentinel/event-match';
+import {matchLevelOf} from '@/lib/sentinel/event-match';
 import {funnelCounts,FUNNEL_WINDOWS} from '@/lib/sentinel/discovery-funnel';
 export const dynamic='force-dynamic';
 
@@ -21,6 +21,6 @@ export async function GET(request:Request){try{
   candidates:(cands.results as any[]).map(r=>({id:r.id,createdAt:r.created_at,priority:String(r.priority??''),symbols:list(r.symbols)})),
   cases:(cases.results as any[]).map(r=>({candidateId:String(r.c),symbol:String(r.s),conclusion:String(r.conclusion??''),
    direction:String(caseNewsDirection({newsDirection:r.ndv?{version:r.ndv,direction:r.nd}:null,event:{headline:r.headline,providerSummary:r.summary}}).direction),
-   matchLevel:r.mv===EVENT_MATCH_VERSION&&r.ml?String(r.ml):eventMatch({headline:r.headline,summary:r.summary,companyName:r.name,symbol:r.s}).level})),
+   matchLevel:matchLevelOf({...r,symbol:r.s})})),
   attempts:(attempts.results as any[]).map(r=>({candidateId:String(r.c),symbol:String(r.s),createdAt:r.created_at}))}));
 }catch(e){return failure(e)}}

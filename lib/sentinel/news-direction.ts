@@ -5,8 +5,12 @@
 // It describes the wording of the report, not the future: good news does not guarantee gains and bad news does
 // not guarantee losses. The outcome record will show how useful the split is.
 
-export const NEWS_DIRECTION_VERSION = 'news-direction-v1';
-export type Direction = 'positive' | 'negative' | 'mixed' | 'neutral';
+import { analystOpinion } from './news-assessment';
+
+// news-direction-v2 (2026-11-26): an analyst opinion is checked FIRST and is "Not company news" (neither good nor bad).
+// Otherwise the v1 word lists below apply unchanged. v1 is kept as newsDirectionV1 for stored-label comparison.
+export const NEWS_DIRECTION_V1 = 'news-direction-v1', NEWS_DIRECTION_VERSION = 'news-direction-v2';
+export type Direction = 'positive' | 'negative' | 'mixed' | 'neutral' | 'not_company_news';
 
 // Scandal and solvency: always bad news, whatever else the headline says.
 const SCANDAL: [RegExp, string][] = [
@@ -47,7 +51,19 @@ const POSITIVE: [RegExp, string][] = [
 
 const hits = (text: string, list: [RegExp, string][]) => [...new Set(list.filter(([re]) => re.test(text)).map(([, label]) => label))];
 
+export function newsDirectionV1(input: { headline?: string | null; summary?: string | null }) { return wordDirection(input, NEWS_DIRECTION_V1); }
+
 export function newsDirection(input: { headline?: string | null; summary?: string | null }) {
+  if (analystOpinion(input.headline)) return {
+    version: NEWS_DIRECTION_VERSION, direction: 'not_company_news' as Direction, label: 'Not company news', scandal: false, basis: 'headline',
+    positive: [] as string[], negative: [] as string[],
+    text: 'The headline reports an analyst’s view of the company, not news from the company. It counts as neither good nor bad news.',
+    note: 'Judged from the wording only. Good news does not guarantee gains; bad news does not guarantee losses.',
+  };
+  return wordDirection(input, NEWS_DIRECTION_VERSION);
+}
+
+function wordDirection(input: { headline?: string | null; summary?: string | null }, version: string) {
   // A cancelled or withdrawn deal is bad news even though it names the deal: drop the deal words in that case.
   const DEAL = ['acquisition', 'merger', 'agreement or partnership'];
   const read = (text: string) => { const negative = hits(text, NEGATIVE), cancelled = negative.includes('deal or plan cancelled') || negative.includes('bid withdrawn');
@@ -60,18 +76,22 @@ export function newsDirection(input: { headline?: string | null; summary?: strin
   const label = { positive: 'Good news', negative: use.scandal.length ? 'Bad news: scandal or solvency' : 'Bad news', mixed: 'Mixed news', neutral: 'Neutral news' }[direction];
   const words = direction === 'positive' ? use.positive : direction === 'neutral' ? [] : [...bad, ...(direction === 'mixed' ? use.positive : [])];
   return {
-    version: NEWS_DIRECTION_VERSION, direction, label, scandal: use.scandal.length > 0, basis,
+    version, direction, label, scandal: use.scandal.length > 0, basis,
     positive: use.positive, negative: bad,
     text: direction === 'neutral' ? 'The wording says nothing clearly good or bad.' : `${basis === 'summary' ? 'From the provider summary' : 'From the headline'}: ${words.join(', ')}.`,
     note: 'Judged from the wording only. Good news does not guarantee gains; bad news does not guarantee losses.',
   };
 }
 
-/** A case's direction: the stored label if it was recorded with this version, otherwise computed from the stored text. */
+/**
+ * A case's direction: the stored label if it was recorded with the current version; otherwise computed now from the
+ * stored text with the current version, and labelled "recomputed with <version>". Nothing is stored for old cases.
+ */
 export function caseNewsDirection(kase: any) {
   const stored = kase?.newsDirection;
   if (stored?.version === NEWS_DIRECTION_VERSION && stored.direction) return stored;
-  return newsDirection({ headline: kase?.event?.headline, summary: kase?.event?.providerSummary });
+  const d = newsDirection({ headline: kase?.event?.headline, summary: kase?.event?.providerSummary });
+  return { ...d, label: `${d.label} (recomputed with ${NEWS_DIRECTION_VERSION})`, recomputedWith: NEWS_DIRECTION_VERSION, storedVersion: stored?.version ?? null };
 }
-/** Whether a report may be shown as an idea at all. Bad and mixed news never are; they are still recorded and measured. */
+/** Whether a report may be shown as an idea at all. Bad and mixed news, and analyst opinions (not company news), never are; they are still recorded and measured. */
 export const showableAsIdea = (d: { direction: Direction }) => d.direction === 'positive' || d.direction === 'neutral';

@@ -1,7 +1,7 @@
 import {identity,json,failure,ApiError} from '@/lib/sentinel/api';
 import {database,iso} from '@/db/store';
 import {caseNewsDirection,NEWS_DIRECTION_VERSION} from '@/lib/sentinel/news-direction';
-import {eventMatch,EVENT_MATCH_VERSION} from '@/lib/sentinel/event-match';
+import {matchLevelOf} from '@/lib/sentinel/event-match';
 import {OUTCOME_HORIZONS} from '@/lib/sentinel/outcome-observation';
 import {selectionComparison,type CompareCase} from '@/lib/sentinel/selection-comparison';
 export const dynamic='force-dynamic';
@@ -26,7 +26,7 @@ export async function GET(request:Request){try{
  const rows=cases.results as any[];
  const compare:CompareCase[]=rows.map(r=>{const stored=r.dv===NEWS_DIRECTION_VERSION&&r.dd;const d=caseNewsDirection({newsDirection:r.dv?{version:r.dv,direction:r.dd}:null,event:{headline:r.headline,providerSummary:r.summary}});
   return {id:String(r.id),symbol:String(r.s??''),createdAt:String(r.created_at),status:String(r.status??''),conclusion:String(r.conclusion??''),screenVersion:r.screen??null,
-   matchLevel:r.mv===EVENT_MATCH_VERSION&&r.ml?String(r.ml):eventMatch({headline:r.headline,summary:r.summary,companyName:r.name,symbol:r.s}).level,
+   matchLevel:matchLevelOf({...r,symbol:r.s}),
    direction:String(d.direction),label:{version:String(d.version),source:stored?'stored':'computed',storedVersion:r.dv??null}};});
  return json(selectionComparison({now,horizon,truncated:rows.length>=CASE_LIMIT,olderScreenCount:Number((older.results as any[])[0]?.n??0),cases:compare,
   outcomes:(outcomes.results as any[]).map(o=>({caseId:String(o.c),symbol:String(o.s??''),horizonIntervals:Number(o.h),entryDate:o.entry,exitDate:o.exit,stockReturn:o.stock,benchmarkReturn:o.spy,matchedDates:list(o.dates),benchmark:o.benchmark??null}))}));
