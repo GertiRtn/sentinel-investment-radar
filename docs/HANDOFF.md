@@ -748,3 +748,56 @@ It did not have #36 (company page polish) or #37 (investment case).
 **Deviations from the design, to review:** the side column is not sticky (the real one is taller than a screen, so sticky would hide events and positions until the end of the page); the design's "To justify today's price…" headline is replaced by the API's own sentence; the market-value inputs moved into the fold, with a one-line source under the headline; "not reported" notes for noncontrolling interests and preferred stock are shown in view.
 
 **Verified:** 282/282 tests (the static banned-word scan of every source string and the route test pass with no exception added); `tsc` clean; build OK. Screenshots of the real built page at 1440 and 390 px, every "What the price assumes" state: `docs/design/company-page-2026-11-17/` (fixtures from the real pure functions; tooling in `scripts/design/`). Not checked: the deployed Site, real company data in a browser, and keyboard and screen-reader use beyond the existing labels.
+
+## 2026-11-25 — Claude Code (Opus): research evaluation, stage 1 (Phase 2)
+
+**Baseline:** main 3c37b8f; 282/282. Branch `research-eval-stage1`. Not merged, not deployed, not published. The Practice experiment and its rules are untouched. Codex's uncommitted working copy (`sentinel-research` on the founder's Mac) was not reachable and was not used; its review stays open until it is on a branch. Separately, #45 (company page design) was re-opened against main as #46.
+
+**Built:**
+- `lib/sentinel/research-stats.ts` (shared costs on both legs, validity checks, correct median, seeded block bootstrap).
+- `harness-v2`, which fixes the four audit defects (windows crossing sets, stock-only costs, invalid rows accepted, even-count median).
+- `selection-comparison-v1`: pure module plus a read-only route, selected vs assessed-not-selected vs SPY from stored outcome records, counts only below 20 per group, and the news-direction version and source recorded per case.
+- `meetsIdeaRules` exported from `idea-select.ts`. The idea list behaves as before.
+- Details in AGENTS.md ("Research evaluation") and `docs/specs/research-evaluation-stage1-2026-11-25.md`.
+
+**Verified:**
+- 296/296: harness tests rewritten 3 → 6, +10 in `tests/selection-comparison.test.mjs`, +1 Miniflare route test. All test data is synthetic and labelled.
+- `tsc` clean; build OK; banned-word checks pass on the new route's output.
+- One harness assertion was changed deliberately: the 30-day gap between sets is replaced by "no window crosses into a later set".
+
+**Not verified / no real data:** production D1 and Alpaca are unreachable from the sandbox, so there are no real counts. Run `GET /api/selection-comparison?horizon=5` and `?horizon=20` on the Site after deployment (founder's decision). 20-interval screen-v2 outcomes cannot exist before about 2026-12-11.
+
+**Documented, not fixed (founder decides):** decision-replay entry at the last close before the decision, which credits pre-decision moves. Proposed fix: `decision-replay-v2`, with entry at the first close after the case and fixed horizons.
+
+**Next:** see section 5 of the spec. In short:
+- Accumulate at least 20 outcomes per group at 20 intervals.
+- A point-in-time universe and delisted coverage.
+- The replay fix, if replay is ever used.
+- Freeze a rule before reading the test set.
+- A prospective virtual experiment compared with all assessed cases.
+
+## 2026-11-25 (later) — Claude Code (Opus): `/api/selection-comparison` review (auth, rate limit, errors)
+
+**Auth:** the shared `identity()`. Signed out gets 401 "Sign in to access your research". All three reads are filtered by the owner. It is a GET, so there is no origin check, the same as every other read-only route. The auth still trusts the Sites platform headers (see "How it runs").
+
+**Rate limit:** none, the same as the other read-only routes (`ideas`, `discovery-funnel`). The only routes with a limit or cooldown are those that call an outside source or a model.
+
+Measured locally on synthetic data (`signal_log` shaped like production: 6 KB case bodies, 4 outcomes and 10 candidates per case):
+
+| Cases | Rows read (case read) | Time | Response |
+|---|---|---|---|
+| 3,000 | about 48,000 | about 0.2 s | 0.95 MB |
+| 20,000 | 320,000 | about 1.1 s | 6.3 MB |
+
+- Rows read equal every row the owner has in `signal_log`: there is no index on `kind`, and known issue 8 says to measure before adding one.
+- The response is mostly the per-case list, which carries the news-direction version for each compared case.
+- Production D1 was not measured.
+
+**Errors:**
+- 400 "horizon must be 5, 20, 60 or 120." for any other value, including 'abc', '', '5.5' and '-5'.
+- 401 as above.
+- Anything else gets the shared 503 text: "The server could not complete this request. Your unsaved input is still on screen." The second sentence is odd for a route with no page, but it is shared by every route.
+
+**Fixed (dca4d65):** the case read kept the oldest 20,000 rows and so would have dropped the newest screen-v2 cases. It now reads screen-v2 cases only, newest first, plus one count of older-screen cases, and says that the oldest are missing if the limit is hit. New tests cover the 401, the bad horizons and the older-screen count. 296/296; `tsc` clean.
+
+**Open for the founder:** whether to add a cooldown, or make the per-case list opt-in (for example `?cases=1`), before the case count grows. Neither is needed at today's volume.
