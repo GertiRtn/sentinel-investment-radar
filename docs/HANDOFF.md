@@ -737,6 +737,18 @@ It did not have #36 (company page polish) or #37 (investment case).
 
 **What the parsing cannot handle:** per-class counts (companyfacts drops the class dimension, so summing classes is never possible from it); splits not yet visible in IEX prices; other listings that are notes or preferred (they still block as "share classes", conservatively); NCI and preferred compared at book value; mezzanine preferred under other tags (`TemporaryEquityCarryingAmountAttributableToParent`) not read; an amendment that changes the count on the same date is treated as a correction, which would hide a genuinely new class added only by amendment (none seen).
 
+## 2026-11-17 (night) — Claude Code (Opus): company page design port (Lovable "Signal Scout Investment Desk", 7b5ec85)
+
+**Base:** branch `share-safety` (PR #44, not yet merged), on the founder's "go". Branch `company-page-design`. Not merged, not published.
+
+**Ported, presentation only:** the design's tokens and classes from `styles.css` (scoped to `.company-page`, so other pages are unchanged); the page structure from `CompanyPage.tsx` (top bar, breadcrumb, monogram, 48 px price with source chip, two-column grid with "What the price assumes" and "What acting would change" in the main column, assessment / investment case / recent events / positions in the side column, footer); the chart styling from `CompanyCharts.tsx` (segmented controls, legend dots, SPY switch, token colours, event keys); the card layouts from `DecisionPanels.tsx` (state box with "Unavailable" pill and the real reasons, "Checks not run" box, "How this was worked out" fold, comparison as one card per option below 640 px, "Save snapshot" button, on-screen-vs-saved box). No data, calculation, endpoint, version or stored record changed. Existing `components/ui/switch.tsx` reused; no new dependency.
+
+**Not ported (as instructed):** "Value per share if…" table, sample constants, prototype tag, sample-state dropdown, simulated buttons, the "quote refreshes" checkbox, the link to a decisions page, and the design's evidence-strength bar (the current display is kept).
+
+**Deviations from the design, to review:** the side column is not sticky (the real one is taller than a screen, so sticky would hide events and positions until the end of the page); the design's "To justify today's price…" headline is replaced by the API's own sentence; the market-value inputs moved into the fold, with a one-line source under the headline; "not reported" notes for noncontrolling interests and preferred stock are shown in view.
+
+**Verified:** 282/282 tests (the static banned-word scan of every source string and the route test pass with no exception added); `tsc` clean; build OK. Screenshots of the real built page at 1440 and 390 px, every "What the price assumes" state: `docs/design/company-page-2026-11-17/` (fixtures from the real pure functions; tooling in `scripts/design/`). Not checked: the deployed Site, real company data in a browser, and keyboard and screen-reader use beyond the existing labels.
+
 ## 2026-11-25 — Claude Code (Opus): research evaluation, stage 1 (Phase 2)
 
 **Baseline:** main 3c37b8f; 282/282. Branch `research-eval-stage1`. Not merged, not deployed, not published. The Practice experiment and its rules are untouched. Codex's uncommitted working copy (`sentinel-research` on the founder's Mac) was not reachable and was not used; its review stays open until it is on a branch. Separately, #45 (company page design) was re-opened against main as #46.
@@ -789,3 +801,22 @@ Measured locally on synthetic data (`signal_log` shaped like production: 6 KB ca
 **Fixed (dca4d65):** the case read kept the oldest 20,000 rows and so would have dropped the newest screen-v2 cases. It now reads screen-v2 cases only, newest first, plus one count of older-screen cases, and says that the oldest are missing if the limit is hit. New tests cover the 401, the bad horizons and the older-screen count. 296/296; `tsc` clean.
 
 **Open for the founder:** whether to add a cooldown, or make the per-case list opt-in (for example `?cases=1`), before the case count grows. Neither is needed at today's volume.
+
+## 2026-11-25 (evening) — Claude Code (Opus): "Load share counts" on stale SEC data; company page layout
+
+**Branch `company-page-share-refresh`, built on #46** (`company-page-design-main`), because #46 rewrites the same panel. PR against main. Merge #46 first; nothing is merged or published.
+
+**1. Missing button (live check, EME).**
+- *Cause:* the button was drawn only inside the "Unavailable" state. EME's calculation completes, but its SEC data predates `facts-parser-v3` ("Checks not run: noncontrolling interests, preferred stock"), and the API already returned `canLoadShareCounts: true`. Main has the same bug.
+- *Fix:* the control sits under "Checks not run" in both states. It shows when `canLoadShareCounts` is true and `sec.parserCurrent` is false, with one line explaining why. It also shows, as before, when the SEC read is missing or failed. The backfill route is unchanged; it already finds a company from the owner's cases when it is not saved.
+
+**Does the hourly run re-read stale companies?**
+- *Saved companies (watchlist):* yes. The filings stage re-reads 5 per run, the longest-unchecked first, within 30 s, through the normal ingest, which writes the current parser marker. Every saved company is reached within about (saved count ÷ 5) hours. It is ordered by the last check, not by parser age.
+- *Companies known only from discovery cases:* no. They are re-read only when a new case about them is assessed and their last discovery read is at least 24 h old. A company with no new news keeps its old read indefinitely.
+- *Proposed, not built:* a parser catch-up step at the end of the filings stage, only when its 30 s cap has not been reached. At most 1 company per hourly run whose parser marker is missing. Chosen from companies with screen-v2 cases in the last 7 days, newest case first. Skip any company with a failed SEC read in the last 6 h. Normal SEC limiter and ingest. That is at most 24 extra company reads a day, about 2 SEC requests each. It changes the hourly run, so it needs the founder's approval and should be checked against `pipeline_run` stage times.
+
+**2. Layout.** #46 already puts "What the price assumes" and "What acting would change" in the main column under Financials, as in the Lovable design. The live Site shows main, which does not have #46 yet. No further change is needed here.
+
+**Screenshots:** `docs/design/company-page-2026-11-25/`, at 1440 and 390 px, 2× density, fictional fixtures (see its README). `scripts/design/screenshots.mjs` takes an optional `SCALE`.
+
+**Verified:** 296/296; `tsc` clean; build OK. **Not verified:** the live Site, and the button against real SEC from the Site.
