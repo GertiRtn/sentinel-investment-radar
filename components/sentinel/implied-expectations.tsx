@@ -57,6 +57,7 @@ export function ImpliedExpectationsPanel({ symbol }: { symbol: string }) {
             ? <p className="text-[22px] font-semibold leading-snug">{r.implied.text}</p>
             : <><p className="text-[22px] font-semibold leading-snug">Outside range</p><p className="mt-1 text-sm">{r.implied.text}</p></>}
           <p className="mt-2 text-[11px] text-muted-foreground">{r.marketValue.price.source} · shares from the cover page of {r.marketValue.shares.form} filed {r.marketValue.shares.filed} · cash flow for the year to {r.baseCashFlow.periodEnd} · as of {day(r.asOf)}</p>
+          {r.baseCashFlow.capexNote && <p className="mt-1 text-[11px] text-muted-foreground">{r.baseCashFlow.capexNote}</p>}
         </>}
         <ChecksNotRun text={r.notRun?.text} />
         {loadControl}

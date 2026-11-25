@@ -9,7 +9,7 @@ import {archivedDailyBars} from './daily-bars';
 import {closesOf} from './market-model';
 import {closeFromBars} from './last-close';
 import {closeInstant} from './case-context';
-import {latestShareCount,TAG_LIST_V4,type FinancialFact,type Figure} from './financial';
+import {latestShareCount,TAG_LIST_V5,type FinancialFact,type Figure} from './financial';
 import {practiceState,type PracticeTrade} from './practice';
 import {AUTO_POLICY} from './auto-practice';
 import {impliedExpectations,splitCheck,otherListings,type PriceInput,type SecState,type SplitCheck} from './implied-expectations';
@@ -53,11 +53,11 @@ export async function secFor(owner:string,entityId:string,asOf:string):Promise<S
  try{
   const ok=await db.prepare("SELECT 1 x FROM sec_run WHERE entity_id=? AND status='success' LIMIT 1").bind(entityId).first();
   if(!ok)return {state:'not_loaded'};
-  const file=await companyFile(entityId,asOf,'public',owner,TAG_LIST_V4);
+  const file=await companyFile(entityId,asOf,'public',owner,TAG_LIST_V5);
   const shares=(await db.prepare("SELECT f.* FROM financial_fact f WHERE entity_id=? AND metric IN ('shares_outstanding','shares_outstanding_multiclass') AND known_from<=? AND EXISTS(SELECT 1 FROM sec_run s WHERE s.entity_id=f.entity_id AND s.status='success' AND s.raw_event_id=f.raw_event_id)").bind(entityId,asOf).all<FinancialFact>()).results;
   const claimFacts=(await db.prepare("SELECT f.* FROM financial_fact f WHERE entity_id=? AND metric IN ('nci','nci_redeemable','preferred','claim_unreadable') AND known_from<=? AND EXISTS(SELECT 1 FROM sec_run s WHERE s.entity_id=f.entity_id AND s.status='success' AND s.raw_event_id=f.raw_event_id)").bind(entityId,asOf).all<FinancialFact>()).results;
   const marker=await db.prepare('SELECT last_good_at FROM source_state WHERE source=?').bind(parserSource(entityId)).first<{last_good_at:string|null}>();
-  return {state:'loaded',annual:file.figures as Figure[],quarterly:file.quarterlyFigures as Figure[],shareFact:latestShareCount(shares,asOf),claimFacts,lastGoodAt:file.lastGoodAt?String(file.lastGoodAt):null,parserCurrent:!!marker?.last_good_at,tagList:TAG_LIST_V4};
+  return {state:'loaded',annual:file.figures as Figure[],quarterly:file.quarterlyFigures as Figure[],shareFact:latestShareCount(shares,asOf),claimFacts,lastGoodAt:file.lastGoodAt?String(file.lastGoodAt):null,parserCurrent:!!marker?.last_good_at,tagList:TAG_LIST_V5};
  }catch(e){return {state:'failed',error:(e instanceof Error?e.message:'The SEC records could not be read.').slice(0,200)};}
 }
 const secState=(r:SecRead):SecState=>r.state==='loaded'?{state:'loaded',parserCurrent:r.parserCurrent,tagList:r.tagList}:r;

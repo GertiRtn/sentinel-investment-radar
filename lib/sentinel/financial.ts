@@ -27,28 +27,34 @@ TAG_LISTS[TAG_LIST_V3]={...TAG_LISTS[TAG_LIST_V2],
  nci:['MinorityInterest'],nci_redeemable:['RedeemableNoncontrollingInterestEquityCarryingAmount'],
  preferred:['PreferredStockValue','PreferredStockValueOutstanding']};
 /**
- * The ONE capital-expenditure tag list for free cash flow (`capex-tags-v3`, 2026-11-25). Free cash flow anywhere in
- * Sentinel comes from `freeCashFlow()` (free-cash-flow.ts), which accepts capex only under these tags.
- * Only tags whose SEC definition is purchases of property, plant and equipment. Left out for the founder to decide:
- * PaymentsToAcquireProductiveAssets (SEC definition also covers software and other intangible assets; EMCOR uses it)
- * and PaymentsToExploreAndDevelopOilAndGasProperties (covers exploration as well as development).
- * The list is a separate version from the xbrl tag lists: xbrl-tags-v3 already existed for claims.
+ * Capital-expenditure tag lists for free cash flow. Free cash flow anywhere in Sentinel comes from `freeCashFlow()`
+ * (free-cash-flow.ts), which reads the CURRENT list below. Old lists stay for the labels on stored records.
+ *  - capex-tags-v3 (2026-11-25): purchases of property, plant and equipment only (read through xbrl-tags-v4).
+ *  - capex-tags-v4 (2026-11-26, founder approval): + PaymentsToAcquireProductiveAssets (SEC definition also covers
+ *    software and intangibles; EMCOR's only capex tag) and PaymentsToExploreAndDevelopOilAndGasProperties (exploration
+ *    and development). ORDER IS PRIORITY: for one period the first tag present is used; tags are never added together;
+ *    a lower-priority tag with a different value is shown as "Other capital-spending tag also reported".
  */
-export const CAPEX_TAG_LIST='capex-tags-v3';
-export const CAPEX_TAGS:readonly string[]=Object.freeze(['PaymentsToAcquirePropertyPlantAndEquipment']);
-export const CAPEX_EXCLUDED:Readonly<Record<string,string>>=Object.freeze({
- PaymentsToAcquireProductiveAssets:'its SEC definition also covers software and other intangible assets',
- PaymentsToExploreAndDevelopOilAndGasProperties:'its SEC definition covers exploration as well as development of oil and gas properties'});
-/** `xbrl-tags-v4` (2026-11-25) = v3 with capex taken from CAPEX_TAGS. Read by the company page and the decision workflow. */
+export const CAPEX_TAG_LIST_V3='capex-tags-v3',CAPEX_TAG_LIST_V4='capex-tags-v4';
+export const CAPEX_TAG_LISTS:Readonly<Record<string,readonly string[]>>=Object.freeze({
+ [CAPEX_TAG_LIST_V3]:Object.freeze(['PaymentsToAcquirePropertyPlantAndEquipment']),
+ [CAPEX_TAG_LIST_V4]:Object.freeze(['PaymentsToAcquirePropertyPlantAndEquipment','PaymentsToAcquireProductiveAssets','PaymentsToExploreAndDevelopOilAndGasProperties'])});
+/** The current list: what freeCashFlow() uses. */
+export const CAPEX_TAG_LIST=CAPEX_TAG_LIST_V4;
+export const CAPEX_TAGS:readonly string[]=CAPEX_TAG_LISTS[CAPEX_TAG_LIST];
+/** `xbrl-tags-v4` (2026-11-25) = v3 with capex from capex-tags-v3. Kept for records labelled with it. */
 export const TAG_LIST_V4='xbrl-tags-v4';
-TAG_LISTS[TAG_LIST_V4]={...TAG_LISTS[TAG_LIST_V3],capex:[...CAPEX_TAGS]};
-export type TagListId=typeof TAG_LIST_V1|typeof TAG_LIST_V2|'xbrl-tags-v3'|'xbrl-tags-v4';
+TAG_LISTS[TAG_LIST_V4]={...TAG_LISTS[TAG_LIST_V3],capex:[...CAPEX_TAG_LISTS[CAPEX_TAG_LIST_V3]]};
+/** `xbrl-tags-v5` (2026-11-26) = v4 with capex from capex-tags-v4, in priority order. Read by the company page and the decision workflow. */
+export const TAG_LIST_V5='xbrl-tags-v5';
+TAG_LISTS[TAG_LIST_V5]={...TAG_LISTS[TAG_LIST_V4],capex:[...CAPEX_TAG_LISTS[CAPEX_TAG_LIST_V4]]};
+export type TagListId=typeof TAG_LIST_V1|typeof TAG_LIST_V2|'xbrl-tags-v3'|'xbrl-tags-v4'|'xbrl-tags-v5';
 const listOf=(id:string)=>{const l=TAG_LISTS[id];if(!l)throw new Error('Unknown tag list '+id);return l;};
 const KNOWN=new Map<string,Set<string>>();for(const l of Object.values(TAG_LISTS))for(const [m,t] of Object.entries(l))KNOWN.set(m,new Set([...(KNOWN.get(m)??[]),...t]));
 /** A fact is left out only when its tag belongs to another tag list and not to this one (so a v2-only tag never reaches a v1 figure). */
 const outside=(list:Record<string,string[]>,f:FinancialFact)=>!!KNOWN.get(f.metric)?.has(f.source_tag)&&!list[f.metric]?.includes(f.source_tag);
 export type FinancialFact={id:string;entity_id:string;metric:string;source_tag:string;value:number;unit:string;period_start:string;period_end:string;fiscal_year:number|null;fiscal_period:string|null;form:string;known_from:string;filed:string;accession:string;raw_event_id:string;recorded_at:string};
-export type Figure={metric:string;value:number|null;unit:string;period_end:string;known_from:string|null;inputs:FinancialFact[];method:string;tagList?:string;confidence:'computed'|'estimated'|'unavailable'|'reported';reason:string};
+export type Figure={metric:string;value:number|null;unit:string;period_end:string;known_from:string|null;inputs:FinancialFact[];alsoReported?:FinancialFact[];method:string;tagList?:string;confidence:'computed'|'estimated'|'unavailable'|'reported';reason:string};
 export const day=(d:string)=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d));
 export function parseFacts(data:any,entity:string,raw:string,recorded:string):FinancialFact[]{
  const out:FinancialFact[]=[],pairs=new Map<string,[string,string]>();for(const list of Object.values(TAG_LISTS))for(const [metric,tags] of Object.entries(list))for(const tag of tags)pairs.set(metric+'|'+tag,[metric,tag]);
@@ -119,6 +125,10 @@ export function quarterlyFigures(rows:FinancialFact[],asOf:string,recordedAsOf?:
  }
  return [...choices.values()].map(f=>({metric:f.metric,value:f.value,unit:f.unit,period_end:f.period_end,known_from:f.known_from,inputs:[f],method:'reported:'+f.source_tag,tagList,confidence:'reported',reason:'Directly reported approximately three-month period'}));
 }
+/** Every fact the list allows for one metric and annual period, known by asOf (the candidates selectFacts chooses from). */
+function candidates(rows:FinancialFact[],asOf:string,recordedAsOf:string|undefined,TAGS:Record<string,string[]>){
+ const m=new Map<string,FinancialFact[]>();for(const f of rows){if(outside(TAGS,f)||!TAGS[f.metric]?.includes(f.source_tag))continue;if(f.known_from>asOf||recordedAsOf&&f.recorded_at>recordedAsOf||!annual(f))continue;const k=f.metric+':'+f.period_end;m.set(k,[...(m.get(k)??[]),f]);}return m;
+}
 export function selectFacts(rows:FinancialFact[],asOf:string,recordedAsOf?:string,tagList:string=TAG_LIST_V1){
  const choices=new Map<string,FinancialFact>(),TAGS=listOf(tagList);
  for(const f of rows){if(outside(TAGS,f))continue;if(f.known_from>asOf||recordedAsOf&&f.recorded_at>recordedAsOf||!annual(f))continue;const key=f.metric+':'+f.period_end;const old=choices.get(key);const priority=TAGS[f.metric]?.indexOf(f.source_tag)??99;const oldPriority=old?TAGS[old.metric]?.indexOf(old.source_tag)??99:99;
@@ -127,9 +137,9 @@ export function selectFacts(rows:FinancialFact[],asOf:string,recordedAsOf?:strin
  }return [...choices.values()];
 }
 export function derive(rows:FinancialFact[],asOf:string,recordedAsOf?:string,tagList:string=TAG_LIST_V1):Figure[]{
- const TAGS=listOf(tagList),selected=selectFacts(rows,asOf,recordedAsOf,tagList),periods=[...new Set(selected.filter(f=>f.period_start).map(f=>f.period_end))].sort();const all:Figure[]=[];const byPeriod=new Map<string,Record<string,Figure>>();
+ const TAGS=listOf(tagList),selected=selectFacts(rows,asOf,recordedAsOf,tagList),cands=candidates(rows,asOf,recordedAsOf,TAGS),periods=[...new Set(selected.filter(f=>f.period_start).map(f=>f.period_end))].sort();const all:Figure[]=[];const byPeriod=new Map<string,Record<string,Figure>>();
  for(const end of periods){const map:Record<string,Figure>={};
- for(const metric of Object.keys(TAGS)){const f=selected.find(f=>f.metric===metric&&f.period_end===end);map[metric]={metric,value:f?.value??null,unit:metric==='shares_diluted'?'shares':metric==='eps_diluted'?'USD/shares':'USD',period_end:end,known_from:f?.known_from||null,inputs:f?[f]:[],method:f?'reported:'+f.source_tag:'unavailable',confidence:f?'reported':'unavailable',reason:f?'Reported annual period or year-end balance':'No supported tag for this annual period'};}
+ for(const metric of Object.keys(TAGS)){const f=selected.find(f=>f.metric===metric&&f.period_end===end);const also=f?(cands.get(metric+':'+end)??[]).filter(x=>x.source_tag!==f.source_tag):[];map[metric]={...(also.length?{alsoReported:also}:{}),metric,value:f?.value??null,unit:metric==='shares_diluted'?'shares':metric==='eps_diluted'?'USD/shares':'USD',period_end:end,known_from:f?.known_from||null,inputs:f?[f]:[],method:f?'reported:'+f.source_tag:'unavailable',confidence:f?'reported':'unavailable',reason:f?'Reported annual period or year-end balance':'No supported tag for this annual period'};}
  const calc=(metric:string,deps:Figure[],fn:(v:number[])=>number,method:string,unit='ratio',estimate=false)=>{
  const inputs=[...new Map(deps.flatMap(d=>d.inputs).map(f=>[f.id,f])).values()];const durations=inputs.filter(f=>f.period_start&&f.period_end===end).map(f=>f.period_start);const aligned=new Set(durations).size<=1;
  const missing=deps.some(d=>d.value===null);let value=missing||!aligned?null:fn(deps.map(d=>d.value!));if(value!==null&&!Number.isFinite(value))value=null;

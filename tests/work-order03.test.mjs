@@ -568,11 +568,10 @@ await test('review fixes: share-count backfill through ingest, SEC load states, 
  await seed('BKF',50);
  mock.get('https://data.alpaca.markets').intercept({path:/^\/v2\/stocks\/BKF\/bars\?.*adjustment=(raw|split)/,headers:H}).reply(200,JSON.stringify({bars:dates.map(d=>({t:d+'T05:00:00Z',c:50})),next_page_token:null})).persist();
  await db.prepare("INSERT INTO source_state(source,failures,checked_at,last_good_at) VALUES(?,0,?,?)").bind('sentinel:facts-parser:facts-parser-v3:sec:'+cik,now,now).run();
- // capex-tags-v3 (2026-11-25): PaymentsToAcquireProductiveAssets is not used (its SEC definition also covers software and
- // intangible assets), so the price card is unavailable with the "not tagged" note, never a zero capex.
- const ok=(await req('/implied-expectations?symbol=BKF','GET',undefined,owner)).data;assert.equal(ok.status,'unavailable');assert.equal(ok.sources.tagList,'xbrl-tags-v4');
- assert.match(ok.missing.join(' '),/Base cash flow: Capital spending is not tagged: no purchase of property, plant and equipment is reported for the year to \d{4}-12-31 under the tags Sentinel uses \(capex-tags-v3\)\. Free cash flow is unknown, not zero\./);
- assert.equal(ok.baseCashFlow,undefined);assert.equal(ok.implied,undefined);
+ // capex-tags-v4 (2026-11-26, founder approval): PaymentsToAcquireProductiveAssets is used when no property, plant and equipment tag is reported.
+ const ok=(await req('/implied-expectations?symbol=BKF','GET',undefined,owner)).data;assert.equal(ok.status,'computed',JSON.stringify(ok.missing));assert.equal(ok.baseCashFlow.capex,30e6);assert.equal(ok.sources.tagList,'xbrl-tags-v5');assert.equal(ok.implied.growthPct,5);
+ assert.equal(ok.baseCashFlow.capexTag,'PaymentsToAcquireProductiveAssets');assert.equal(ok.baseCashFlow.capexTagList,'capex-tags-v4');assert.equal(ok.baseCashFlow.capexNote,null);
+ assert.equal(ok.notRun.text,'Checks not run: debt (not tagged).');assert.deepEqual([ok.claims.nci.state,ok.claims.preferred.state],['not_reported','not_reported'],'no tag in the filing: "not reported"');
  // The stored fact itself is kept: the tag list decides what is used, nothing stored changes.
  const file=await db.prepare("SELECT COUNT(*) n FROM financial_fact WHERE entity_id=? AND metric='capex' AND source_tag='PaymentsToAcquireProductiveAssets'").bind('sec:'+cik).first();assert.equal(file.n,1);
  // 3. No price, no snapshot: a case for a symbol with no daily bars.
