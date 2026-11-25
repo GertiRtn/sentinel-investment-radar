@@ -32,7 +32,7 @@ Last revised 2026-11-12, when development moved from ChatGPT/Codex to Claude Cod
 
 ---
 
-## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 282/282 on 2026-11-17 on branch `share-safety`)
+## Current system (deployed v36 plus PRs to #28; `node --test tests/*.test.mjs`: 296/296 on 2026-11-25 on branch `research-eval-stage1`)
 
 - Server-side persistence on Cloudflare D1, raw captures in D1/R2 with SHA-256 dedup.
 - SEC: identity, filings, annual + quarterly figures, token bucket below SEC's ceiling, identifying User-Agent.
@@ -129,6 +129,15 @@ Founder decision: four separate questions per case, never one threshold or one c
   - *Noncontrolling interests and preferred stock* (`xbrl-tags-v3` = v2 + `nci` `MinorityInterest`, `nci_redeemable` `RedeemableNoncontrollingInterestEquityCarryingAmount`, `preferred` `PreferredStockValue` / `PreferredStockValueOutstanding`; v1 and v2 unchanged), at the base cash-flow year-end: above 10% of market value (book value) → unavailable with the reason; tag present but unreadable (a unit other than USD: `claim_unreadable` marker fact) or reported only for other dates within 400 days → unavailable with the reason; nothing reported → "not reported in the company's filings" (a note, not a check not run); company read before `facts-parser-v3` → "Checks not run".
   - *Wording:* banned words removed from existing user-facing text, including negated uses (idea-select, idea-card, investment-readiness, case overview, discovery, investment brief, plain brief, price assessment, thesis, discovery case, MCP tool text, the old ledger's labels "Practice purchase/sale"). Stored values `buy`/`sell` in `paper_trade` records are unchanged. Two tests guard it: every string in `lib/`, `components/` and `app/` (TypeScript AST, small explained allow-list) and every string the routes return across all test owners and cases.
 - Offline research only: `scripts/research/` (`implied-offline.mjs`, `harness.mjs`). Specs: `docs/specs/prediction-feasibility-2026-11-16.md`, `docs/specs/architecture-handoff-2026-11-16.md`.
+
+## Research evaluation (measurement only — added 2026-11-25)
+
+Spec and audit: `docs/specs/research-evaluation-stage1-2026-11-25.md`.
+
+- **Shared statistics** (`lib/sentinel/research-stats.ts`, `research-stats-v1`, pure): costs 15 bp per side on the stock **and** SPY (matching SPY = 0 excess); a valid return is finite and above −100%; median of an even count = average of the two middle values; seeded circular moving-block bootstrap over decision dates, block length from window overlap. Use it for any new return measurement; do not write another cost or median.
+- **Harness** (`scripts/research/harness.mjs`, `harness-v2`, offline): rows carry `exitDate`; earlier-set rows whose window reaches the next set are purged (plus an optional embargo) and counted; invalid rows are rejected with a reason.
+- **Selection comparison** (`lib/sentinel/selection-comparison.ts` pure `selection-comparison-v1`; `GET /api/selection-comparison?horizon=5|20|60|120`, default 20; no page uses it): screen-v2 matched cases, selected = `meetsIdeaRules` (exported from `idea-select.ts`, the list's own rule) vs every other compared case, SPY on the same matched dates, from stored `discovery_outcome` records only. Entry must be after the case's UTC date; misaligned or invalid records are rejected with reasons; missing = not yet due vs due with no record; one horizon per comparison; a company's overlapping later case in the same group is left out. Each case records its news-direction version and whether the label was stored or computed; mixed versions are never pooled. **Below 20 usable outcomes in either group: counts only.** Read-only, on request, never in the hourly run; never feeds the list, screen, score, rankings, alerts or experiments.
+- **Known defect, not fixed (founder decides):** the decision replay (`replayDecisions` in `decision-run.ts`) enters at the last close at or before the case time, so it credits moves that happened before anyone could act; exits are "latest". Do not use replay figures for evaluation until `decision-replay-v2` (entry at the first close after the case, fixed horizons) is approved.
 
 ## Shadow reader (evaluation only — added 2026-11-12)
 

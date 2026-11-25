@@ -736,3 +736,30 @@ It did not have #36 (company page polish) or #37 (investment case).
 **Bumping the parser to `facts-parser-v3`** means every company read before today shows "Checks not run: noncontrolling interests, preferred stock" until its next SEC refresh or "Load share counts".
 
 **What the parsing cannot handle:** per-class counts (companyfacts drops the class dimension, so summing classes is never possible from it); splits not yet visible in IEX prices; other listings that are notes or preferred (they still block as "share classes", conservatively); NCI and preferred compared at book value; mezzanine preferred under other tags (`TemporaryEquityCarryingAmountAttributableToParent`) not read; an amendment that changes the count on the same date is treated as a correction, which would hide a genuinely new class added only by amendment (none seen).
+
+## 2026-11-25 — Claude Code (Opus): research evaluation, stage 1 (Phase 2)
+
+**Baseline:** main 3c37b8f; 282/282. Branch `research-eval-stage1`. Not merged, not deployed, not published. The Practice experiment and its rules are untouched. Codex's uncommitted working copy (`sentinel-research` on the founder's Mac) was not reachable and was not used; its review stays open until it is on a branch. Separately, #45 (company page design) was re-opened against main as #46.
+
+**Built:**
+- `lib/sentinel/research-stats.ts` (shared costs on both legs, validity checks, correct median, seeded block bootstrap).
+- `harness-v2`, which fixes the four audit defects (windows crossing sets, stock-only costs, invalid rows accepted, even-count median).
+- `selection-comparison-v1`: pure module plus a read-only route, selected vs assessed-not-selected vs SPY from stored outcome records, counts only below 20 per group, and the news-direction version and source recorded per case.
+- `meetsIdeaRules` exported from `idea-select.ts`. The idea list behaves as before.
+- Details in AGENTS.md ("Research evaluation") and `docs/specs/research-evaluation-stage1-2026-11-25.md`.
+
+**Verified:**
+- 296/296: harness tests rewritten 3 → 6, +10 in `tests/selection-comparison.test.mjs`, +1 Miniflare route test. All test data is synthetic and labelled.
+- `tsc` clean; build OK; banned-word checks pass on the new route's output.
+- One harness assertion was changed deliberately: the 30-day gap between sets is replaced by "no window crosses into a later set".
+
+**Not verified / no real data:** production D1 and Alpaca are unreachable from the sandbox, so there are no real counts. Run `GET /api/selection-comparison?horizon=5` and `?horizon=20` on the Site after deployment (founder's decision). 20-interval screen-v2 outcomes cannot exist before about 2026-12-11.
+
+**Documented, not fixed (founder decides):** decision-replay entry at the last close before the decision, which credits pre-decision moves. Proposed fix: `decision-replay-v2`, with entry at the first close after the case and fixed horizons.
+
+**Next:** see section 5 of the spec. In short:
+- Accumulate at least 20 outcomes per group at 20 intervals.
+- A point-in-time universe and delisted coverage.
+- The replay fix, if replay is ever used.
+- Freeze a rule before reading the test set.
+- A prospective virtual experiment compared with all assessed cases.
