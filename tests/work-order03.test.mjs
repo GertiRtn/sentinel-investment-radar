@@ -647,8 +647,10 @@ await test('selection comparison route (synthetic records): owner-scoped, read-o
   st.push(db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_outcome',NULL,?)").bind('outcome:sc-'+sym,owner,new Date(Date.parse(at)+9*D).toISOString(),JSON.stringify({version:'forward-observation-v1',caseId:id,symbol:sym,caseAt:at,benchmark:'SPY',entryDate:entry,exitDate:dates[5],stockReturn:spy+(selected?0.02:0),benchmarkReturn:spy,excessReturn:selected?0.02:0,matchedDates:dates,horizonIntervals:5})));}
   await db.batch(st);};
  const start=Date.parse('2026-03-02T00:00:00Z');await insert(12,true,start);await insert(25,false,start);
+ await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES('discovery-case:sc-old',?,?,'discovery_case',NULL,?)").bind(owner,'2026-02-01T15:00:00.000Z',JSON.stringify({version:'discovery-case-v2',symbol:'OLD',status:'complete',conclusion:'INVESTIGATE',decision:{version:'research-screen-v1'},event:{headline:'OLD Fixture Inc. files a report'}})).run();
  const before=(await db.prepare("SELECT COUNT(*) n FROM signal_log").first()).n;
  const few=await req('/selection-comparison?horizon=5','GET',undefined,owner);assert.equal(few.status,200,JSON.stringify(few.data));
+ assert.deepEqual(few.data.universe,{cases:38,olderScreen:1,tickerNotMatched:0,probableWrongCompany:0,compared:37,truncated:false},'the first-screen case is counted, not compared');
  assert.equal(few.data.status,'counts_only');assert.equal(few.data.result,null);assert.equal(few.data.groups.selected.used,12);assert.equal(few.data.groups.notSelected.used,25);assert.match(few.data.missing[0],/^Selected: 12 usable outcomes/);
  assert.ok(few.data.cases.every(c=>c.labelVersion==='news-direction-v1'));assert.deepEqual(few.data.groups.selected.labelSource,{stored:12});assert.deepEqual(few.data.groups.notSelected.labelSource,{computed:25});
  await insert(8,true,start+40*3*D,'B');const full=(await req('/selection-comparison?horizon=5','GET',undefined,owner)).data;
@@ -656,6 +658,8 @@ await test('selection comparison route (synthetic records): owner-scoped, read-o
  assert.ok(Math.abs(full.result.notSelected.averageExcessAfterCosts)<1e-12,'matching SPY shows zero after the same costs');assert.ok(Math.abs(full.result.difference.averageExcessAfterCosts-(full.result.selected.averageExcessAfterCosts))<1e-12);
  const h20=(await req('/selection-comparison','GET',undefined,owner)).data;assert.equal(h20.horizonIntervals,20);assert.equal(h20.status,'counts_only');assert.equal(h20.groups.selected.used,0);
  assert.equal((await req('/selection-comparison?horizon=7','GET',undefined,owner)).status,400);
+ for(const q of ['abc','','5.5','-5'])assert.equal((await req('/selection-comparison?horizon='+q,'GET',undefined,owner)).data.error,'horizon must be 5, 20, 60 or 120.');
+ const out=await req('/selection-comparison','GET',undefined,'');assert.equal(out.status,401);assert.deepEqual(out.data,{error:'Sign in to access your research'});
  const other=(await req('/selection-comparison?horizon=5','GET',undefined,'nobody-here')).data;assert.equal(other.universe.cases,0);assert.equal(other.status,'counts_only');
  assert.equal((await db.prepare("SELECT COUNT(*) n FROM signal_log").first()).n,before+16,'nothing written by the route (16 = the 8 cases and 8 outcomes this test inserted)');
  const strings=[];const walk=v=>{if(typeof v==='string')strings.push(v);else if(Array.isArray(v))v.forEach(walk);else if(v&&typeof v==='object')Object.values(v).forEach(walk);};[few.data,full.data,h20.data,other.data].forEach(walk);

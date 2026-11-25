@@ -67,13 +67,17 @@ function difference(sel: Used[], not: Used[], blockLength: number) {
   return { averageExcessAfterCosts: stat(all), interval90: { lower: iv.lower, upper: iv.upper, blockLength: iv.blockLength } };
 }
 
-export function selectionComparison(input: { cases: CompareCase[]; outcomes: OutcomeRow[]; horizon: number; now: string; truncated?: boolean }) {
+/**
+ * `cases` may hold every case, or only screen-v2 cases with `olderScreenCount` giving the number left out by the read.
+ * `truncated` means the read hit its row limit; the caller reads newest first, so the oldest cases are the ones missing.
+ */
+export function selectionComparison(input: { cases: CompareCase[]; outcomes: OutcomeRow[]; horizon: number; now: string; truncated?: boolean; olderScreenCount?: number }) {
   const { horizon, now } = input;
   if (!(OUTCOME_HORIZONS as readonly number[]).includes(horizon)) throw new Error('horizon must be 5, 20, 60 or 120 trading-day intervals.');
   const today = now.slice(0, 10), dueBefore = Date.parse(now) - horizonWaitDays(horizon) * 86400000;
 
   const all = input.cases;
-  const olderScreen = all.filter(c => c.screenVersion !== SCREEN_V2);
+  const olderScreen = all.filter(c => c.screenVersion !== SCREEN_V2).length + (input.olderScreenCount ?? 0);
   const v2 = all.filter(c => c.screenVersion === SCREEN_V2);
   const unmatched = v2.filter(c => c.status !== 'complete');
   const wrongCompany = v2.filter(c => c.status === 'complete' && c.matchLevel === 'name_conflict');
@@ -132,7 +136,7 @@ export function selectionComparison(input: { cases: CompareCase[]; outcomes: Out
   const status = mixed ? 'mixed_label_versions' : short.length ? 'counts_only' : 'computed';
   const missing = mixed ? [`Cases carry more than one news-direction version (${Object.entries(labelVersions).map(([v, n]) => `${v}: ${n}`).join(', ')}). Groups built with different label versions are not pooled.`]
     : short.map(([g, n]) => `${g}: ${n} usable outcome${n === 1 ? '' : 's'} at ${horizon} trading-day intervals; ${MIN_PER_GROUP} needed.`);
-  if (input.truncated) missing.push('The case read hit its row limit, so later cases are not included.');
+  if (input.truncated) missing.push('The case read hit its row limit: the oldest screen-v2 cases are not included.');
 
   let result: any = null;
   if (status === 'computed') {
@@ -143,7 +147,7 @@ export function selectionComparison(input: { cases: CompareCase[]; outcomes: Out
   return {
     version: SELECTION_COMPARISON_VERSION, statsVersion: STATS_VERSION, ideaRule: IDEA_SELECT_VERSION, horizonIntervals: horizon, generatedAt: now, status,
     minimumPerGroup: MIN_PER_GROUP, labelVersions, missing,
-    universe: { cases: all.length, olderScreen: olderScreen.length, tickerNotMatched: unmatched.length, probableWrongCompany: wrongCompany.length, compared: included.length, truncated: !!input.truncated },
+    universe: { cases: all.length + (input.olderScreenCount ?? 0), olderScreen, tickerNotMatched: unmatched.length, probableWrongCompany: wrongCompany.length, compared: included.length, truncated: !!input.truncated },
     outcomes: { read: input.outcomes.length, otherHorizon, outsideCompared: notInUniverse },
     groups, crossGroupOverlaps, result,
     costBasis: COST_BASIS,
