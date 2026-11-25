@@ -67,8 +67,8 @@ export function keyFigures(kase: any, figures: Fig[], cik: string | null) {
   const f = freeCashFlow(figures as any), help = 'Operating cash flow minus capital spending (purchases of property, plant and equipment), both reported for the same year in the same filing. Calculated by Sentinel.';
   const provenance = { fcfVersion: f.version, capexTagList: f.capexTagList, tagList: (figures.find(x => x.metric === 'cfo') as any)?.tagList ?? null };
   const fcf = f.status === 'reported'
-    ? { metric: 'fcf', label: 'Free cash flow', help, value: f.value, unit: 'USD', periodEnd: f.periodEnd, changePct: null, changeNote: `Calculated: operating cash flow minus capital spending (${f.capexTagList})`, reason: null,
-        source: src(figures.find(x => x.metric === 'cfo' && x.period_end === f.periodEnd)!, cik), calculation: { cfo: f.cfo, capex: f.capex, cfoTag: f.cfoTag, capexTag: f.capexTag, accession: f.accession, filed: f.filed }, ...provenance }
+    ? { metric: 'fcf', label: 'Free cash flow', help, value: f.value, unit: 'USD', periodEnd: f.periodEnd, changePct: null, changeNote: `Calculated: operating cash flow minus capital spending (${f.capexTag}, ${f.capexTagList})${f.capexNote ? '. ' + f.capexNote : ''}`, reason: null,
+        source: src(figures.find(x => x.metric === 'cfo' && x.period_end === f.periodEnd)!, cik), calculation: { cfo: f.cfo, capex: f.capex, cfoTag: f.cfoTag, capexTag: f.capexTag, otherCapexTags: f.otherCapexTags, capexNote: f.capexNote, accession: f.accession, filed: f.filed }, ...provenance }
     : { metric: 'fcf', label: 'Free cash flow', help, value: null, unit: 'USD', periodEnd: f.periodEnd, changePct: null, changeNote: null, source: null, reason: f.reason, calculation: null, ...provenance };
   const p = kase?.price;
   const pe = p?.status === 'indicative' && Number.isFinite(p.ratio)

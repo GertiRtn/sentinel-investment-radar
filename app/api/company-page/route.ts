@@ -2,7 +2,7 @@ import {env} from 'cloudflare:workers';
 import {identity,json,failure,ApiError} from '@/lib/sentinel/api';
 import {database,iso} from '@/db/store';
 import {companyFile} from '@/lib/sentinel/edgar';
-import {TAG_LIST_V4} from '@/lib/sentinel/financial';
+import {TAG_LIST_V5} from '@/lib/sentinel/financial';
 import {archivedDailyBars} from '@/lib/sentinel/daily-bars';
 import {caseIdea,holdings,parseCase} from '@/lib/sentinel/case-idea';
 import {buildCompanyPage} from '@/lib/sentinel/company-page';
@@ -29,7 +29,7 @@ export async function GET(request:Request){try{
  const verRows=cases.length?(await db.prepare(`SELECT created_at,body FROM signal_log WHERE owner=? AND kind='event_verification' AND json_extract(body,'$.caseId') IN (${cases.map(()=>'?').join(',')}) ORDER BY created_at,id`).bind(owner,...cases.map(k=>k.id)).all<{created_at:string;body:string}>()).results:[];
  const verifications:Record<string,any>={};for(const r of verRows){const b=JSON.parse(r.body);verifications[b.caseId]=b;}
  let figures:any[]=[],quarterly:any[]=[],figuresAsOf:string|null=null;
- if(entity){try{const file=await companyFile(entity.id,iso(),'public',owner,TAG_LIST_V4);figures=file.figures;quarterly=file.quarterlyFigures;figuresAsOf=file.lastGoodAt?String(file.lastGoodAt):null;}catch{}}
+ if(entity){try{const file=await companyFile(entity.id,iso(),'public',owner,TAG_LIST_V5);figures=file.figures;quarterly=file.quarterlyFigures;figuresAsOf=file.lastGoodAt?String(file.lastGoodAt):null;}catch{}}
  const creds=env as unknown as {ALPACA_DATA_KEY_ID?:string;ALPACA_DATA_SECRET?:string};let bars:any={stock:null,spy:null,fetchedAt:null,error:null};
  if(!creds.ALPACA_DATA_KEY_ID||!creds.ALPACA_DATA_SECRET)bars.error='Market data is not connected.';
  else{const day=86400000,start=new Date(Date.now()-400*day).toISOString().slice(0,10),end=new Date().toISOString().slice(0,10);

@@ -249,7 +249,7 @@ export function impliedExpectations(i: ImpliedInput) {
     marketValue: { value: marketValue, unit: 'USD', method: 'price × cover-page shares outstanding',
       price: { value: price.value, at: price.at, basis: price.basis, source: price.source, rawEventId: price.rawEventId, ageDays: price.ageDays },
       shares: { value: shares.value, coverDate: shares.coverDate, ageDays: shares.ageDays, stale: shares.stale, ...shares.source } },
-    baseCashFlow: { value: base, cfo: cf.cfo, capex: cf.capex, unit: 'USD', periodStart: cf.periodStart, periodEnd: cf.periodEnd, filed: cf.filed, accession: cf.accession, rawEventId: cf.rawEventId, capexTag: cf.capexTag, capexTagList: cf.capexTagList, fcfVersion: cf.fcfVersion, method: FCF_METHOD },
+    baseCashFlow: { value: base, cfo: cf.cfo, capex: cf.capex, unit: 'USD', periodStart: cf.periodStart, periodEnd: cf.periodEnd, filed: cf.filed, accession: cf.accession, rawEventId: cf.rawEventId, capexTag: cf.capexTag, capexTagList: cf.capexTagList, otherCapexTags: cf.otherCapexTags, capexNote: cf.capexNote, fcfVersion: cf.fcfVersion, method: FCF_METHOD },
     multiple: marketValue / base,
     implied: solved.status === 'solved'
       ? { status: 'solved' as const, growth: solved.growth, growthPct: Math.round(solved.growth * 10000) / 100, repricedValue: presentValue(base, solved.growth, discount, terminalGrowth, years),

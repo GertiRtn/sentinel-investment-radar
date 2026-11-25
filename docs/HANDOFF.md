@@ -859,3 +859,26 @@ Measured locally on synthetic data (`signal_log` shaped like production: 6 KB ca
 - `tsc` clean, build OK.
 
 **Not verified:** the live Site.
+
+## 2026-11-26 — Claude Code (Opus): capex-tags-v4 (follow-up to #49)
+
+**Baseline:** main 2f6e519 (#49 merged), 301/301. Branch `capex-tags-v4`. Not merged, not published.
+
+**Done (founder-approved list, in priority order):**
+- `capex-tags-v4` = `PaymentsToAcquirePropertyPlantAndEquipment`, `PaymentsToAcquireProductiveAssets`, `PaymentsToExploreAndDevelopOilAndGasProperties`.
+- `freeCashFlow()` → `free-cash-flow-v2`: within the filing that reports operating cash flow, the first tag present wins; tags are never summed; another tag with a different value is named.
+- The note "Other capital-spending tag also reported: <tag> ($x). Sentinel uses <tag> ($y), the first tag in capex-tags-v4, and never adds tags together." shows on Key figures (its note line) and on the price card (visible under the headline).
+- `derive` keeps the other listed facts for the same item and year as `alsoReported`, only when there are some. That is how the note can see them; values and choices are unchanged.
+- Readers moved from `xbrl-tags-v4` to `xbrl-tags-v5` (v4 is kept, with v3 capex, for stored labels).
+- Provenance: `capexTagList: capex-tags-v4`, `capexTag`, `otherCapexTags`, `capexNote`, `fcfVersion`.
+- `implied-expectations-v4` and `company-page-v2` are not bumped; the capex list and function versions record the change.
+
+**Real check (read-only, SEC companyfacts fetched 2026-11-25/26; both surfaces agree):**
+- EMCOR 2025: $1,302,063,000 − $112,750,000 [ProductiveAssets] = **$1,189,313,000**.
+- Diamondback 2025: $8,758,000,000 − $3,523,000,000 [ExploreAndDevelop] = **$5,235,000,000**. Its card is unavailable for an unrelated reason (noncontrolling interests above 10%), so the comparison is with the card's history row for that year. `PaymentsToAcquireOilAndGasProperty` ($5.938B, includes acquisitions) is not in the list and is not used.
+- Apple FY2026: $145,097,000,000 − $9,041,000,000 [PP&E] = **$136,056,000,000**.
+
+**Tests:** 301 before, 301 after.
+- The five v3 tests in `tests/free-cash-flow.test.mjs` were replaced by five v4 tests: the list; each tag alone; two tags with different values (first wins, note on both surfaces, never summed; same value gives no note); none (Unknown, "Capital spending is not tagged"); (d) same number on both surfaces.
+- The BKF Miniflare fixture (EMCOR-style) asserted the v3 outcome. It now computes again with ProductiveAssets.
+- `tsc` clean, build OK. **Not verified:** the live Site.
