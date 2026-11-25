@@ -23,6 +23,9 @@ export type LightCase = {
   score: number | null; matchLevel: string; topics: string[]; priceStatus: string | null; securityStatus: string | null; direction: Direction;
 };
 export type Tier = 'meets_rules' | 'closest';
+/** The "meets the research rules" test, shared with the selection comparison so both apply one rule. */
+export const meetsIdeaRules = (c: Pick<LightCase, 'screenVersion' | 'status' | 'conclusion' | 'matchLevel' | 'direction'>) =>
+  c.screenVersion === 'research-screen-v2' && c.status === 'complete' && c.conclusion === 'INVESTIGATE' && c.matchLevel === 'named_in_headline' && c.direction === 'positive';
 
 const BLOCKERS: [RegExp, string][] = [
   [/price-to-reported-earnings|P\/E/i, 'no usable price or earnings figure for a P/E'],
@@ -36,7 +39,7 @@ export function selectIdeas(cases: LightCase[], now: string) {
   const tierOf = (c: LightCase): Tier | null => {
     if (c.screenVersion !== 'research-screen-v2' || c.status !== 'complete' || c.matchLevel === 'name_conflict') return null;
     if (!showableAsIdea({ direction: c.direction })) return null;
-    if (c.conclusion === 'INVESTIGATE' && c.matchLevel === 'named_in_headline' && c.direction === 'positive') return 'meets_rules';
+    if (meetsIdeaRules(c)) return 'meets_rules';
     if (c.topics.length > 0 && c.topics.every(t => t === 'Analyst opinion')) return null;
     return c.score !== null && c.score >= CLOSEST_MIN_SCORE ? 'closest' : null;
   };
