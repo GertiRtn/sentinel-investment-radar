@@ -1,4 +1,5 @@
 import {database,hash,iso} from '@/db/store';
+import {alpacaPausedUntil,recordAlpaca429,clearAlpacaPause} from './alpaca-backoff';
 
 const CACHE_MS=6*3600000;
 
@@ -13,9 +14,13 @@ export async function archivedDailyBars(ticker:string,start:string,end:string,c:
  const db=database(),source=`alpaca:iex:daily-bars:${ticker}:${start}:${end}`+(adjustment==='all'?'':':'+adjustment);
  const state=await db.prepare('SELECT last_good_at,raw_event_id FROM source_state WHERE source=?').bind(source).first<{last_good_at:string|null;raw_event_id:string|null}>();
  if(state?.last_good_at&&state.raw_event_id&&Date.now()-Date.parse(state.last_good_at)<CACHE_MS){const raw=await db.prepare('SELECT id,fetched_at,payload FROM raw_event WHERE id=?').bind(state.raw_event_id).first<{id:string;fetched_at:string;payload:string}>();if(raw)return {payload:JSON.parse(raw.payload),rawId:raw.id,fetchedAt:raw.fetched_at};}
+ // Backoff (alpaca-backoff-v1): while a 429 pause is in force nothing is sent.
+ const paused=await alpacaPausedUntil();if(paused)throw new Error(`The price source is rate-limiting; requests are paused until ${paused}.`);
  const params=new URLSearchParams({timeframe:'1Day',start,end,limit:'1000',adjustment,feed:'iex',sort:'asc'});
  let response:Response;try{response=await fetch('https://data.alpaca.markets/v2/stocks/'+encodeURIComponent(ticker)+'/bars?'+params,{headers:{'APCA-API-KEY-ID':c.ALPACA_DATA_KEY_ID,'APCA-API-SECRET-KEY':c.ALPACA_DATA_SECRET,Accept:'application/json'},redirect:'manual',signal:AbortSignal.timeout(10000)});}catch{throw new Error('The price source could not be reached.');}
- if(!response.ok)throw new Error(response.status===429?'The price source is rate-limiting; try again in a minute.':`The price source returned HTTP ${response.status}.`);
+ if(response.status===429){const until=await recordAlpaca429('daily bars');throw new Error(`The price source is rate-limiting; requests are paused until ${until}.`);}
+ if(!response.ok)throw new Error(`The price source returned HTTP ${response.status}.`);
+ await clearAlpacaPause();
  const text=await response.text();if(text.length>300000)throw new Error('The price response was too large.');
  let payload:any;try{payload=JSON.parse(text)}catch{throw new Error('The price response could not be read.');}
  if(payload?.next_page_token)throw new Error('The price history exceeded one page.');

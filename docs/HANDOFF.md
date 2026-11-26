@@ -911,3 +911,41 @@ Measured locally on synthetic data (`signal_log` shaped like production: 6 KB ca
 - `tsc` clean, build OK.
 
 **Not verified:** real stored cases (D1 is unreachable from here). Run the dry run on the Site after a deployment.
+
+## 2026-11-26 (later) — Claude Code (Opus): assessment capacity, batch 3b (option C, reduced scope)
+
+**Baseline:** main a329a76 (#51 merged). Branch `assessment-capacity`. Not merged, not published. Details in AGENTS.md ("Assessment capacity").
+
+**Built:**
+- An assessment lease (5 min, per owner): a second batch returns `busy`.
+- Per-stage `pipeline_stage` rows: new, append-only, written as each stage finishes.
+- `GET /api/pipeline` → `steps` (last run, success and failure per step).
+- A shared Alpaca 429 backoff for daily bars and asset details: 60 s doubling to 15 min, cleared by a success. The batch starts no new case while paused.
+- `scripts/assessment-workload.mjs` to measure rows read per assessment-only call.
+- **Not changed:** batch size (6), time cap (35 s), queue order, assessment logic, labels, experiment rules and timing, hourly run order.
+
+**Throughput (computed, not measured):**
+- Before and after this PR: 6 assessments an hour, because nothing calls the assessment-only stage yet.
+- With a ChatGPT scheduled task calling `{"stages":["assessment"]}`: every 30 min ≈ 18 an hour; every 15 min ≈ 30 an hour. When the hourly run and an extra call coincide, one of them records `busy`.
+
+**Limits and margins:**
+- SEC: shared bucket at 2/s vs SEC's 10/s, a 5× margin.
+- Alpaca: about 18 calls per batch at most. The account limit was not checked (200/min is from general knowledge).
+- D1 reads are the binding limit:
+  - about 85,000 rows per assessment-only call (synthetic: ~30,000 queue, ~9,000 per case for the company's ~3,000 facts and ~1,500 filings);
+  - every 30 min that is about 4.1M a day for those calls alone;
+  - the hourly run itself is about 3M a day (computed);
+  - against a 5M-a-day free allowance (general knowledge; not checked for Sites).
+  - An extra call every 60 minutes (offset by 30) is the most that fits without a read-cost change.
+
+**Experiment check (no change):**
+- Selection is oldest assessment first, among cases assessed after the start, within 96 h of their assessment, with a fresh quote at the check.
+- It does not depend on when an assessment finishes. A case assessed between hourly runs is considered at the next hourly check.
+- More assessments mean more candidates. With at most 2 opens per check and 5 positions, more will wait and some will expire at 96 h. That is the same rule, with more volume.
+
+**Tests:** 311 before (main a329a76), 318 after.
+- +4 Miniflare: the lease (busy, expiry, release, no duplicates); batch equal to one by one with queue order unchanged; Alpaca backoff (doubling, no call while paused, cleared by success, the batch waits); per-stage rows (one per stage, a failing step does not block the others, last success per step, owner isolation, never updated).
+- +3 pure: busy status, last per step, backoff schedule.
+- `tsc` clean, build OK.
+
+**Not verified:** the Site, real D1 row counts, real stage times, and the platform's request limit.

@@ -4,9 +4,10 @@
 
 export const STAGES = ['filings', 'news', 'discovery', 'assessment', 'outcomes', 'practice', 'experiment'] as const;
 export type Stage = (typeof STAGES)[number];
-export type StageStatus = 'complete' | 'partial' | 'idle' | 'failed' | 'skipped';
+// 'busy' (2026-11-26): the assessment lease was held by another batch, so this call assessed nothing. Not a failure.
+export type StageStatus = 'complete' | 'partial' | 'idle' | 'failed' | 'skipped' | 'busy';
 export type StageRecord = { stage: Stage; status: StageStatus; elapsedMs: number; message?: string };
-export type PipelineSummary = { status: 'complete' | 'partial' | 'failed' | 'idle'; failed: Stage[]; partial: Stage[]; skipped: Stage[] };
+export type PipelineSummary = { status: 'complete' | 'partial' | 'failed' | 'idle'; failed: Stage[]; partial: Stage[]; skipped: Stage[]; busy: Stage[] };
 
 /** Parse the optional `stages` argument. Absent means every stage, in the original order. */
 export function parseStages(input: unknown): { stages: Stage[] } | { error: string } {
@@ -36,6 +37,7 @@ export function statusOf(stage: Stage, result: any): StageStatus {
     case 'failed': return 'failed';
     case 'partial': return 'partial';
     case 'idle': case 'not_started': return 'idle';
+    case 'busy': return 'busy';
     case 'complete': return 'complete';
     default:
       // The Practice mark returns a dated record with no status field; any other shape is unknown, not a pass.
@@ -69,9 +71,29 @@ export function summarise(records: StageRecord[]): PipelineSummary {
   const failed = records.filter(r => r.status === 'failed').map(r => r.stage);
   const partial = records.filter(r => r.status === 'partial').map(r => r.stage);
   const skipped = records.filter(r => r.status === 'skipped').map(r => r.stage);
+  const busy = records.filter(r => r.status === 'busy').map(r => r.stage);
   const ran = records.filter(r => r.status !== 'skipped');
   const status = failed.length ? (failed.length === ran.length ? 'failed' : 'partial')
     : partial.length ? 'partial'
-    : ran.length && ran.every(r => r.status === 'idle') ? 'idle' : 'complete';
-  return { status, failed, partial, skipped };
+    : ran.length && ran.every(r => r.status === 'idle' || r.status === 'busy') ? 'idle' : 'complete';
+  return { status, failed, partial, skipped, busy };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Per-stage run records (pipeline-stage-v1, 2026-11-26). Each stage that runs appends one NEW `pipeline_stage` row as
+// soon as it finishes (id from the run id and stage, so a retry cannot add a second row), so a request that is cut off
+// still shows what finished. Rows are never updated. `lastPerStage` reads them back.
+export const STAGE_RECORD_VERSION = 'pipeline-stage-v1';
+export type StageRow = { stage: string; status: string; at: string; elapsedMs?: number; message?: string | null; runId?: string | null };
+/** A stage succeeded when it ran and nothing in it failed: complete, or idle (nothing to do). */
+export const SUCCESS: readonly string[] = ['complete', 'idle'];
+/** Last run, last success and last failure per stage, from stage rows (any order). Stages with no row say so. */
+export function lastPerStage(rows: StageRow[]) {
+  const sorted = [...rows].filter(r => (STAGES as readonly string[]).includes(r.stage)).sort((a, b) => b.at.localeCompare(a.at));
+  const pick = (r: StageRow | undefined) => (r ? { at: r.at, status: r.status, elapsedMs: r.elapsedMs ?? null, message: r.message ?? null } : null);
+  return STAGES.map(stage => {
+    const mine = sorted.filter(r => r.stage === stage);
+    return { stage, lastRun: pick(mine[0]), lastSuccess: pick(mine.find(r => SUCCESS.includes(r.status))), lastFailure: pick(mine.find(r => r.status === 'failed')),
+      note: mine.length ? null : 'No record of this step in the rows read.' };
+  });
 }
