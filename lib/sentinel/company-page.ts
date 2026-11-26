@@ -7,6 +7,7 @@ import { closeInstant } from './case-context';
 import { caseEventMatch } from './event-match';
 import { notChecked, STATE_LABEL } from './event-verify';
 import { caseNewsDirection } from './news-direction';
+import { verifiedParty } from './verified-party';
 import { freeCashFlow } from './free-cash-flow';
 
 export const COMPANY_PAGE_VERSION = 'company-page-v2'; // v2 (2026-11-25): free cash flow from freeCashFlow() (capex-tags-v3), shared with the price card
@@ -106,10 +107,14 @@ export function buildCompanyPage(input: {
   const cases = [...input.cases].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   const latest = cases[0] ?? null, cik = input.entity?.cik ?? latest?.identity?.cik ?? null;
   const v = (id: string) => input.verifications[id] ?? notChecked();
+  // The role as stored with the case (never recomputed here): read from the headline's wording, never verified.
+  const ROLE_TEXT: Record<string, string> = { 'possible event subject': 'Acting in the reported event', 'possible affected party': 'On the receiving end of the reported event', 'mentioned company': 'Mentioned', 'mentioned platform or distribution channel': 'Mentioned as a channel', unknown: 'Not named in the headline' };
+  const roleOf = (k: any) => { const r = k.identity?.relevance; return r ? { text: `${ROLE_TEXT[r.role] ?? 'Mentioned'}. Role from headline wording: not verified.`, role: r.role ?? null, version: r.version ?? null } : { text: 'Role not assessed: no single SEC company.', role: null, version: null }; };
   const events = cases.map(k => {
-    const match = caseEventMatch(k), ver = v(k.id);
+    const match = caseEventMatch(k), ver = v(k.id), party = verifiedParty(k, input.verifications[k.id]);
     return { caseId: k.id, publishedAt: k.event?.publishedAt ?? null, assessedAt: k.createdAt, headline: k.event?.headline ?? null, source: k.event?.source ?? null, url: k.event?.url ?? null,
-      status: statusLabel(k), analystOpinion: analystOnly(k), newsDirection: (({ direction, label, text }) => ({ direction, label, text }))(caseNewsDirection(k)), match: { level: match.level, label: match.label }, verification: { state: ver.state, label: ver.label ?? STATE_LABEL[ver.state as keyof typeof STATE_LABEL] } };
+      status: statusLabel(k), analystOpinion: analystOnly(k), newsDirection: (({ direction, label, text }) => ({ direction, label, text }))(caseNewsDirection(k)), match: { level: match.level, label: match.label }, verification: { state: ver.state, label: ver.label ?? STATE_LABEL[ver.state as keyof typeof STATE_LABEL] },
+      role: roleOf(k), verifiedParty: { state: party.state, label: party.label, reason: party.reason, version: party.version } };
   });
   const price = input.bars.error ? { status: 'unavailable' as const, reason: input.bars.error, series: [], ranges: {}, markers: [] }
     : priceBlock(input.bars.stock, input.bars.spy, input.bars.fetchedAt, events.filter(e => e.publishedAt && e.headline).map(e => ({ caseId: e.caseId, publishedAt: e.publishedAt!, headline: e.headline! })));
@@ -120,7 +125,7 @@ export function buildCompanyPage(input: {
     reason: i.summary?.reason?.text ?? null, reasonNote: i.summary?.reasonNote ?? null,
     counter: i.summary?.counter ? { text: i.summary.counter.text, unknown: i.summary.counter.status === 'unknown' } : null,
     unknown: 'Expectations: unknown. Sentinel has no analyst estimates or guidance history.',
-    match: events[0].match, verification: events[0].verification, newsDirection: events[0].newsDirection, analystOpinion: events[0].analystOpinion, publishedAt: events[0].publishedAt, assessedAt: latest.createdAt,
+    match: events[0].match, verification: events[0].verification, role: events[0].role, verifiedParty: events[0].verifiedParty, newsDirection: events[0].newsDirection, analystOpinion: events[0].analystOpinion, publishedAt: events[0].publishedAt, assessedAt: latest.createdAt,
     earlierEvents: cases.length - 1, promoted: i.match?.level !== 'name_conflict',
   } : null;
   return {

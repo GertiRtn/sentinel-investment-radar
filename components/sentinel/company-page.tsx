@@ -27,7 +27,7 @@ const Unknown = ({ why }: { why: string }) => <span tabIndex={0} title={why} ari
 const Chip = ({ children, tone = "" }: { children: React.ReactNode; tone?: string }) => <span className={`evidence-chip ${tone}`}>{children}</span>;
 const VER_TONE: Record<string, string> = { supported: "tone-sky", conflicting: "tone-amber", wrong_company: "tone-red" };
 const MATCH_TONE: Record<string, string> = { name_conflict: "tone-red" };
-const NEWS_TONE = (d: string) => (d === "positive" ? "tone-sky" : d === "neutral" ? "" : "tone-amber");
+const NEWS_TONE = (d: string) => (d === "positive" ? "tone-sky" : d === "neutral" || d === "not_company_news" ? "" : "tone-amber");
 const InfoTip = ({ text }: { text: string }) => <span tabIndex={0} title={text} aria-label={text} className="inline-flex size-11 items-center justify-center text-muted-foreground"><Info size={14} /></span>;
 function Seg<T extends string>({ value, options, onChange, label }: { value: T; options: readonly T[]; onChange: (v: T) => void; label: string }) {
   return <div role="group" aria-label={label} className="segmented">{options.map(o => <button key={o} type="button" aria-pressed={value === o} onClick={() => onChange(o)} className={value === o ? "selected" : ""}>{o}</button>)}</div>;
@@ -146,6 +146,7 @@ function Assessment({ a, note, dv, onOpen }: { a: any; note: string | null; dv: 
           <li className="flex gap-3"><HelpCircle size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-label="Unknown" /><span className="text-muted-foreground">{a.counter?.unknown ? a.counter.text : a.unknown}</span></li>
         </ul>
         <div className="mb-6 mt-5 flex flex-wrap gap-2">{a.newsDirection && <Chip tone={NEWS_TONE(a.newsDirection.direction)}>{a.newsDirection.label}</Chip>}<Chip tone={VER_TONE[a.verification.state] ?? ""}>Event: {a.verification.label}</Chip><Chip tone={MATCH_TONE[a.match.level] ?? ""}>Company match: {a.match.label}</Chip>{a.analystOpinion && <Chip>Analyst opinion</Chip>}</div>
+        {a.role && <p className="-mt-3 mb-4 text-[11px] text-muted-foreground">{a.role.text} {a.verifiedParty?.state === "verified" ? a.verifiedParty.label + " (" + a.verifiedParty.reason + ")" : "Verified party: not verified."}</p>}
         <p className="mb-4 text-[11px] text-muted-foreground">Latest report published {day(a.publishedAt)} · assessed {day(a.assessedAt)}{a.earlierEvents ? ` · ${a.earlierEvents} earlier event${a.earlierEvents === 1 ? "" : "s"} below` : ""}</p>
         <button type="button" onClick={() => onOpen(a.caseId)} className="flex h-12 w-full items-center justify-between rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90">Open full research<ArrowUpRight size={18} /></button>
       </>}
@@ -165,6 +166,7 @@ function Events({ events, onOpen }: { events: any[]; onOpen: (id: string) => voi
           <p className="mt-2 text-[11px] text-muted-foreground">{e.source ?? "Unknown source"} · reported claim{e.url && <> · <a className="inline-flex items-center gap-0.5 underline" href={e.url} target="_blank" rel="noreferrer">original<ExternalLink size={9} /></a></>}</p>
           <div className="mt-3 flex flex-wrap items-center gap-1.5">{e.newsDirection && <Chip tone={NEWS_TONE(e.newsDirection.direction)}>{e.newsDirection.label}</Chip>}{e.analystOpinion && <Chip>Analyst opinion</Chip>}<Chip tone={MATCH_TONE[e.match.level] ?? ""}>Company match: {e.match.label}</Chip><Chip tone={VER_TONE[e.verification.state] ?? ""}>{e.verification.label}</Chip>
             <button type="button" onClick={() => onOpen(e.caseId)} className="ml-auto min-h-11 rounded-md px-2 text-[11px] underline-offset-2 hover:underline">Research</button></div>
+          {e.role && <p className="mt-1 text-[11px] text-muted-foreground">{e.role.text} {e.verifiedParty?.state === "verified" ? e.verifiedParty.label + " (" + e.verifiedParty.reason + ")" : "Verified party: not verified."}</p>}
         </article>))}</div>}
     </Card>
   );

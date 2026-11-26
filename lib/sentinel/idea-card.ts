@@ -46,7 +46,7 @@ export function ideaCard(input: { kase: any; context: any; score: any; match: Ev
   else if (conclusion === 'INVESTIGATE') { tone = 'research'; label = 'Worth your research time now'; text = 'A company development and its recorded share price make this worth looking into. The points below explain what Sentinel found; this is not a recommendation.'; }
   else if (conclusion === 'MONITOR') { tone = 'watch'; label = 'Watch, not a priority'; text = `The data is complete but it fails ${failed.length ? failed.join('; ') : 'at least one research rule'}.`; }
   else { tone = 'wait'; label = 'Not enough data to judge'; text = String(kase?.decision?.reason ?? kase?.reason ?? 'Required inputs are missing.'); }
-  if (match.level === 'ticker_only' || match.level === 'named_in_summary') text += ` Company match is unconfirmed: ${match.reason}`;
+  if (match.level === 'ticker_only' || match.level === 'partial_name_only' || match.level === 'named_in_summary') text += ` Company match is unconfirmed: ${match.reason}`;
   const uncertainty = score?.score === null || score?.score === undefined
     ? `Evidence is too thin to score: only ${score?.coverage ?? 0} of 100 checklist points could be checked.`
     : `Evidence ${score.score}/100 (${String(score.band ?? '').toLowerCase()}); ${unknownChecks.length} of ${(score.checks ?? []).length} checks could not be run${unknownChecks.length ? ': ' + unknownChecks.map((c: any) => c.label).join(', ') : ''}. The score counts evidence; it is not a chance of gain.`;

@@ -34,7 +34,8 @@ test('mixed and neutral; the summary is used only when the headline says nothing
  const h=newsDirection({headline:'Acme Wins Contract',summary:'The company also disclosed an SEC investigation.'});assert.equal(h.direction,'positive','a headline with a clear direction is not overridden by the summary');
  assert.equal(newsDirection({}).direction,'neutral');assert.match(newsDirection({headline:'Acme Wins Contract'}).note,/does not guarantee/);
  assert.equal(showableAsIdea({direction:'positive'}),true);assert.equal(showableAsIdea({direction:'neutral'}),true);assert.equal(showableAsIdea({direction:'negative'}),false);assert.equal(showableAsIdea({direction:'mixed'}),false);
- assert.equal(caseNewsDirection({newsDirection:{version:'news-direction-v1',direction:'negative'},event:{headline:'Acme Wins Contract'}}).direction,'negative','the stored label wins');
+ assert.equal(caseNewsDirection({newsDirection:{version:'news-direction-v2',direction:'negative'},event:{headline:'Acme Wins Contract'}}).direction,'negative','the stored label of the current version wins');
+ const old=caseNewsDirection({newsDirection:{version:'news-direction-v1',direction:'negative'},event:{headline:'Acme Wins Contract'}});assert.equal(old.direction,'positive');assert.equal(old.label,'Good news (recomputed with news-direction-v2)');
 });
 
 const NOW='2026-11-15T12:00:00.000Z',lc=(id,o={})=>({id,symbol:id.toUpperCase(),createdAt:'2026-11-14T12:00:00.000Z',status:'complete',conclusion:'INVESTIGATE',screenVersion:'research-screen-v2',reason:null,score:80,matchLevel:'named_in_headline',topics:['Acquisition or transaction'],priceStatus:'indicative',securityStatus:'candidate_common',direction:'positive',...o});

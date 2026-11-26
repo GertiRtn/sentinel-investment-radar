@@ -1,6 +1,6 @@
 import {database,hash,iso} from '@/db/store';
 import {collectStockQuote} from '@/app/api/stock-quote/route';
-import {eventMatch,EVENT_MATCH_VERSION} from './event-match';
+import {eventMatchV1,EVENT_MATCH_V1} from './event-match';
 import {AUTO_POLICY,AUTO_VERSION,AUTO_RULES_TEXT,planAuto,autoState,currentExperiment,regularSession,checkStatus,freshQuote,type Candidate,type Control,type DecisionRecord,type CloseRecord,type Quote} from './auto-practice';
 
 /**
@@ -29,7 +29,8 @@ async function candidates(owner:string,startedAt:string,now:string):Promise<Cand
  const windowStart=new Date(Date.parse(now)-(AUTO_POLICY.maxCaseAgeHours+48)*3600000).toISOString(),since=startedAt>windowStart?startedAt:windowStart;
  const rows=await database().prepare(`SELECT id,created_at,json_extract(body,'$.symbol') symbol,json_extract(body,'$.status') status,json_extract(body,'$.conclusion') conclusion,json_extract(body,'$.decision.version') screen,json_extract(body,'$.security.status') sec,json_extract(body,'$.security.version') secv,json_extract(body,'$.event.headline') headline,json_extract(body,'$.event.providerSummary') summary,json_extract(body,'$.event.publishedAt') published,json_extract(body,'$.event.firstObservedAt') seen,json_extract(body,'$.identity.name') name,json_extract(body,'$.eventMatch.version') mv,json_extract(body,'$.eventMatch.level') ml,json_extract(body,'$.evidenceScore.score') score FROM signal_log WHERE owner=? AND kind='discovery_case' AND created_at>? ORDER BY created_at ASC,id ASC LIMIT 800`).bind(owner,since).all<any>();
  return rows.results.map(r=>({caseId:r.id,symbol:String(r.symbol??''),status:String(r.status??''),assessedAt:r.created_at,publishedAt:r.published??null,firstObservedAt:r.seen??null,screenVersion:r.screen??null,conclusion:String(r.conclusion??''),securityStatus:r.sec??null,securityVersion:r.secv??null,
-  matchLevel:r.mv===EVENT_MATCH_VERSION&&r.ml?String(r.ml):eventMatch({headline:r.headline,summary:r.summary,companyName:r.name,symbol:r.symbol}).level,score:typeof r.score==='number'?r.score:null,headline:String(r.headline??'')}));
+  // auto-practice-v1's rules were fixed with event-match-v1; it keeps reading v1 (computed from the stored text for newer cases) so the running experiment does not change.
+  matchLevel:r.mv===EVENT_MATCH_V1&&r.ml?String(r.ml):eventMatchV1({headline:r.headline,summary:r.summary,companyName:r.name,symbol:r.symbol}).level,score:typeof r.score==='number'?r.score:null,headline:String(r.headline??'')}));
 }
 
 async function quote(symbol:string):Promise<Quote|null>{

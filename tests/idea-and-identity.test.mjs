@@ -13,7 +13,7 @@ const ASHS='AMERICAN SHARED HOSPITAL SERVICES';
 
 test('event match: the ams-OSRAM report tagged AMS is flagged as probably another company',()=>{
  const m=eventMatch({headline:'ams-OSRAM Reports Q3 2026 Financial Results',summary:'',companyName:ASHS,symbol:'AMS'});
- assert.equal(m.level,'name_conflict');assert.equal(m.confirmed,false);assert.equal(m.evidence,'ams-OSRAM');assert.match(m.reason,/different company/);assert.equal(m.version,'event-match-v1');
+ assert.equal(m.level,'name_conflict');assert.equal(m.confirmed,false);assert.equal(m.evidence,'ams-OSRAM');assert.match(m.reason,/different company/);assert.equal(m.version,'event-match-v2');
  assert.equal(eventMatch({headline:'Ams Osram cuts jobs',companyName:ASHS,symbol:'AMS'}).level,'name_conflict');
 });
 test('event match: named, summary-only, ticker-only and unknown stay distinct; only a headline name is confirmed',()=>{
@@ -22,8 +22,11 @@ test('event match: named, summary-only, ticker-only and unknown stay distinct; o
  assert.equal(eventMatch({headline:'Sector update',summary:'American Shared Hospital Services announced',companyName:ASHS,symbol:'AMS'}).confirmed,false);
 });
 test('event match: a stored result is kept; older cases are read from their stored text',()=>{
- const stored={version:'event-match-v1',level:'ticker_only',confirmed:false,evidence:null,label:'x',reason:'y'};
+ // event-match-v2: a stored result of the current version is kept; an older version is recomputed and labelled so.
+ const stored={version:'event-match-v2',level:'ticker_only',confirmed:false,evidence:null,label:'x',reason:'y'};
  assert.equal(caseEventMatch({eventMatch:stored,event:{headline:'Tesla raises guidance'},identity:{name:'Tesla, Inc.'},symbol:'TSLA'}),stored);
+ const older=caseEventMatch({eventMatch:{...stored,version:'event-match-v1'},event:{headline:'Tesla raises guidance'},identity:{name:'Tesla, Inc.'},symbol:'TSLA'});
+ assert.equal(older.level,'named_in_headline');assert.match(older.label,/\(recomputed with event-match-v2\)$/);
  assert.equal(caseEventMatch({event:{headline:'Tesla raises guidance'},identity:{name:'Tesla, Inc.'},symbol:'TSLA'}).level,'named_in_headline');
 });
 

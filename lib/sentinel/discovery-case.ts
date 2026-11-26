@@ -4,12 +4,13 @@ import {classifySecurity,collectSecurityAsset} from './security-asset';
 import {priceAssessment,researchDecisionV2} from './price-assessment';
 import {cashflowScenarios} from './cashflow-scenarios';
 import {investmentBrief} from './investment-brief';
-import {assessCompanyRelevance} from './news-assessment';
+import {assessCompanyRelevance,assessNews,ROUTING_VERSION,RELEVANCE_VERSION} from './news-assessment';
+import {VERIFIED_PARTY_AT_ASSESSMENT} from './verified-party';
 import {collectStockQuote} from '@/app/api/stock-quote/route';
 import {shadowReadCases} from './shadow-store';
 import {evidenceScore,quarterlyRevenueYoY} from './evidence-score';
-import {eventMatch} from './event-match';
-import {newsDirection} from './news-direction';
+import {eventMatch,EVENT_MATCH_VERSION} from './event-match';
+import {newsDirection,NEWS_DIRECTION_VERSION} from './news-direction';
 import {closeFromBars} from './last-close';
 import {archivedDailyBars} from './daily-bars';
 import {env} from 'cloudflare:workers';
@@ -63,7 +64,7 @@ export async function assessDiscoveryQueue(owner:string,email:string,oldestFirst
    const ingestSource='sentinel:discovery-ingest:v1:'+resolved.cik;const prior=await db.prepare('SELECT last_good_at FROM source_state WHERE source=?').bind(ingestSource).first<{last_good_at:string|null}>();const latest=await db.prepare('SELECT status FROM sec_run WHERE entity_id=? ORDER BY known_from DESC LIMIT 1').bind('sec:'+resolved.cik).first<{status:string}>();if(!prior?.last_good_at||Date.now()-Date.parse(prior.last_good_at)>=86400000||latest?.status!=='success'){await ingest(resolved.cik,email);const refreshed=iso();await db.prepare('INSERT INTO source_state(source,failures,checked_at,last_good_at) VALUES(?,0,?,?) ON CONFLICT(source) DO UPDATE SET failures=0,checked_at=excluded.checked_at,last_good_at=excluded.last_good_at,error=NULL,retry_at=NULL').bind(ingestSource,refreshed,refreshed).run();}const file=await companyFile('sec:'+resolved.cik,iso(),'recorded',owner);
    const tickers=JSON.parse(file.entity.tickers);if(!Array.isArray(tickers)||!tickers.some((t:unknown)=>typeof t==='string'&&t.toUpperCase()===symbol)){status='unresolved';missing.push('SEC company record does not list this exact ticker; identity requires review.');}
    else{
-    identity={name:file.entity.name,cik:resolved.cik,symbol,source:'SEC company ticker list and submissions',relevance:assessCompanyRelevance(event.headline,file.entity.name)};
+    identity={name:file.entity.name,cik:resolved.cik,symbol,source:'SEC company ticker list and submissions',relevance:assessCompanyRelevance(event.headline,file.entity.name,symbol)};
     const [quoteResult,assetResult]=await Promise.allSettled([collectStockQuote(symbol),collectSecurityAsset(symbol)]);
     if(quoteResult.status==='fulfilled'){const q=quoteResult.value;const spreadPercent=(q.ask-q.bid)/((q.ask+q.bid)/2)*100;quote={...q,capturedAt:q.capturedAt||q.sourceTime,spreadPercent,wideSpread:spreadPercent>1,stale:Date.now()-Date.parse(q.sourceTime)>300000};}else missing.push('An eligible IEX quote was unavailable; price and valuation are unknown.');
     if(assetResult.status==='fulfilled'){const asset=assetResult.value;security={...classifySecurity(asset.data,symbol,tickers),rawEventId:asset.rawEventId,capturedAt:asset.capturedAt};}else missing.push('The security reference source was unavailable.');
@@ -73,7 +74,10 @@ export async function assessDiscoveryQueue(owner:string,email:string,oldestFirst
    }
   }
  }catch(e){const message=e instanceof Error?e.message:'Company assessment failed';await db.prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_attempt',NULL,?)").bind(crypto.randomUUID(),owner,iso(),JSON.stringify({candidateId:row.id,symbol,message})).run();return {status:'failed',candidateId:row.id,symbol,message:'Assessment failed; the candidate will be retried after a six-hour cooldown.',detail:message};}
- const createdAt=iso(),decision=researchDecisionV2({identity,price,brief,asOf:createdAt,topics:event.analysis?.topics}),result={version:'discovery-case-v2',candidateId:row.id,symbol,createdAt,status,conclusion:decision.conclusion,reason:decision.reason,decision,eventMatch:eventMatch({headline:event.headline,summary:event.providerSummary,companyName:identity?.name,symbol}),newsDirection:newsDirection({headline:event.headline,summary:event.providerSummary}),evidenceScore:evidenceScore({topics:event.analysis?.topics??null,relevance:identity?.relevance??null,price,brief,quarterlyRevenue,asOf:createdAt}),quarterlyRevenue,readiness:decision.readiness,rules:decision.rules,event:{headline:event.headline,url:event.url,source:event.source,publishedAt:event.publishedAt,firstObservedAt:event.firstObservedAt,rawEventId:event.rawEventId,analysis:event.analysis,providerSummary:event.providerSummary||null},identity,security,brief,valuation,price,missing:[...missing,'Verify the event and whether the company is directly affected.','Verify security class and share basis; compare price and valuation with market expectations.','Test the investment thesis and likely costs.'],limitations:'Ticker-to-company mapping is not proof that the news affects this company. A headline and IEX quote do not establish fair value or a trading signal.'};
+ // Label rules v2: the stored headline is routed again with headline-routing-v2 at assessment, so a report collected
+ // before the change is classified like a new one (an analyst opinion never passes R1). The candidate's own routing is kept.
+ const analysis=assessNews({...event,id:event.id??row.id,headline:String(event.headline??'')});
+ const createdAt=iso(),decision=researchDecisionV2({identity,price,brief,asOf:createdAt,topics:analysis.topics}),result={version:'discovery-case-v2',candidateId:row.id,symbol,createdAt,status,conclusion:decision.conclusion,reason:decision.reason,decision,eventMatch:eventMatch({headline:event.headline,summary:event.providerSummary,companyName:identity?.name,symbol}),newsDirection:newsDirection({headline:event.headline,summary:event.providerSummary}),evidenceScore:evidenceScore({topics:analysis.topics,relevance:identity?.relevance??null,price,brief,quarterlyRevenue,asOf:createdAt}),quarterlyRevenue,readiness:decision.readiness,rules:decision.rules,event:{headline:event.headline,url:event.url,source:event.source,publishedAt:event.publishedAt,firstObservedAt:event.firstObservedAt,rawEventId:event.rawEventId,analysis,candidateAnalysis:event.analysis??null,providerSummary:event.providerSummary||null},verifiedParty:VERIFIED_PARTY_AT_ASSESSMENT,labelVersions:{match:EVENT_MATCH_VERSION,routing:ROUTING_VERSION,direction:NEWS_DIRECTION_VERSION,relevance:RELEVANCE_VERSION},identity,security,brief,valuation,price,missing:[...missing,'Verify the event and whether the company is directly affected.','Verify security class and share basis; compare price and valuation with market expectations.','Test the investment thesis and likely costs.'],limitations:'Ticker-to-company mapping is not proof that the news affects this company. A headline and IEX quote do not establish fair value or a trading signal.'};
  const id='discovery-case:'+await hash(JSON.stringify([owner,row.id,symbol]));const saved=await db.prepare("INSERT OR IGNORE INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'discovery_case',?,?)").bind(id,owner,createdAt,identity?'sec:'+identity.cik:null,JSON.stringify(result)).run();
  return {status,created:!!saved.meta.changes,caseId:id,case:saved.meta.changes?result:null};
 }
