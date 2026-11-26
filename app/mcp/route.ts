@@ -4,12 +4,12 @@ import {ingest} from '@/lib/sentinel/edgar';
 import {collectCompanyNews} from '@/app/api/company-news/route';
 import {assessNews,assessCompanyRelevance} from '@/lib/sentinel/news-assessment';
 import {observeOutcomes} from '@/lib/sentinel/outcome-collector';
-import {assessDiscoveryBatch} from '@/lib/sentinel/discovery-case';
+import {assessWithLease} from '@/lib/sentinel/assessment-lease';
 import {markPractice} from '@/app/api/practice/route';
 import {autoPracticeStep} from '@/lib/sentinel/auto-practice-run';
 import {collectDiscovery} from '@/lib/sentinel/discovery-collector';
 import {buildBrief} from '@/lib/sentinel/brief-builder';
-import {parseStages,runStage,skippedRecord,summarise,STAGES,type StageRecord} from '@/lib/sentinel/pipeline';
+import {parseStages,runStage,skippedRecord,summarise,STAGES,STAGE_RECORD_VERSION,type StageRecord} from '@/lib/sentinel/pipeline';
 
 // Site dispatch authenticates MCP callers; every operation is scoped to that caller's watchlist.
 export async function POST(request:Request){
@@ -32,8 +32,11 @@ export async function POST(request:Request){
  if(!email)return reply({content:[{type:'text',text:'A verified contact email is required. No companies were checked.'}],isError:true});
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return reply({content:[{type:'text',text:'A valid SEC contact email is required. No companies were checked.'}],isError:true});
  const parsed=parseStages(msg.params?.arguments?.stages);if('error' in parsed)return reply({content:[{type:'text',text:parsed.error+' Nothing was run.'}],isError:true});
- const wanted=new Set<string>(parsed.stages),runStarted=Date.now(),startedAt=new Date().toISOString(),records:StageRecord[]=[],out:Record<string,any>={};
- const step=async(stage:(typeof STAGES)[number],key:string,fn:()=>Promise<any>)=>{if(!wanted.has(stage)){records.push(skippedRecord(stage));return;}const r=await runStage(stage,fn);records.push(r.record);out[key]=r.result;};
+ const wanted=new Set<string>(parsed.stages),runStarted=Date.now(),startedAt=new Date().toISOString(),records:StageRecord[]=[],out:Record<string,any>={},runId=crypto.randomUUID();let stageRecords=0,stageRecordFailures=0;
+ // pipeline-stage-v1: each stage that runs appends one NEW row as soon as it finishes (id = run + stage, INSERT OR IGNORE),
+ // so a request cut off later still shows what finished. Never updated. Failing to write it never fails the stage.
+ const step=async(stage:(typeof STAGES)[number],key:string,fn:()=>Promise<any>)=>{if(!wanted.has(stage)){records.push(skippedRecord(stage));return;}const stageStarted=new Date().toISOString();const r=await runStage(stage,fn);records.push(r.record);out[key]=r.result;
+  try{await database().prepare("INSERT OR IGNORE INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'pipeline_stage',NULL,?)").bind('pipeline-stage:'+runId+':'+stage,ownerId,new Date().toISOString(),JSON.stringify({version:STAGE_RECORD_VERSION,runId,stage,status:r.record.status,elapsedMs:r.record.elapsedMs,message:r.record.message??null,startedAt:stageStarted,requested:parsed.stages})).run();stageRecords++;}catch{stageRecordFailures++;}};
  await step('filings','filings',async()=>{
   const db=database(),rows=await db.prepare("SELECT e.id,e.name,e.cik,MAX(r.known_from) AS last_check FROM entity_watch w JOIN entity e ON e.id=w.entity_id LEFT JOIN sec_run r ON r.entity_id=e.id WHERE w.owner=? GROUP BY e.id,e.name,e.cik ORDER BY COALESCE(MAX(r.known_from),'') ASC,e.id LIMIT 5").bind(ownerId).all<{id:string;name:string;cik:string;last_check:string|null}>();
   const results:any[]=[],begun=Date.now();let deferred=0;
@@ -47,13 +50,13 @@ export async function POST(request:Request){
  });
  await step('news','news',checkNews);
  await step('discovery','discovery',()=>collectDiscovery(ownerId));
- await step('assessment','discoveryAssessment',()=>assessDiscoveryBatch(ownerId,email));
+ await step('assessment','discoveryAssessment',()=>assessWithLease(ownerId,email));
  await step('outcomes','outcomeObservation',()=>observeOutcomes(ownerId));
  await step('practice','practiceMark',()=>markPractice(ownerId));
  await step('experiment','autoPractice',()=>autoPracticeStep(ownerId));
  const summary=summarise(records),elapsedMs=Date.now()-runStarted;let recorded=true;
  // Append-only record of what this run did, so the stage times and failures can be read afterwards. Failing to store it never fails the run.
- try{await database().prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'pipeline_run',NULL,?)").bind('pipeline-run:'+crypto.randomUUID(),ownerId,startedAt,JSON.stringify({version:'pipeline-v1',startedAt,elapsedMs,requested:parsed.stages,summary,stages:records})).run();}catch{recorded=false;}
+ try{await database().prepare("INSERT INTO signal_log(id,owner,created_at,kind,entity,body) VALUES(?,?,?,'pipeline_run',NULL,?)").bind('pipeline-run:'+runId,ownerId,startedAt,JSON.stringify({version:'pipeline-v1',runId,startedAt,elapsedMs,requested:parsed.stages,summary,stages:records})).run();}catch{recorded=false;}
  const filings=out.filings;
- return reply({content:[{type:'text',text:JSON.stringify({pipeline:{version:'pipeline-v1',status:summary.status,elapsedMs,failed:summary.failed,partial:summary.partial,skipped:summary.skipped,recorded,stages:records},results:filings?.results,checked:filings?.checked,news:out.news,discovery:out.discovery,discoveryAssessment:out.discoveryAssessment,outcomeObservation:out.outcomeObservation,practiceMark:out.practiceMark,autoPractice:out.autoPractice,note:'SEC responses can be cached for up to 24 hours. News reports may be delayed. A failed stage never stops the others and is never reported as complete; partial means work remains for the next run. Failures retain stored records. This tool does not evaluate trades.'})}],isError:summary.failed.length>0});
+ return reply({content:[{type:'text',text:JSON.stringify({pipeline:{version:'pipeline-v1',runId,status:summary.status,elapsedMs,failed:summary.failed,partial:summary.partial,skipped:summary.skipped,busy:summary.busy,recorded,stageRecords:{written:stageRecords,failed:stageRecordFailures},stages:records},results:filings?.results,checked:filings?.checked,news:out.news,discovery:out.discovery,discoveryAssessment:out.discoveryAssessment,outcomeObservation:out.outcomeObservation,practiceMark:out.practiceMark,autoPractice:out.autoPractice,note:'SEC responses can be cached for up to 24 hours. News reports may be delayed. A failed stage never stops the others and is never reported as complete; partial means work remains for the next run. Failures retain stored records. This tool does not evaluate trades.'})}],isError:summary.failed.length>0});
 }
